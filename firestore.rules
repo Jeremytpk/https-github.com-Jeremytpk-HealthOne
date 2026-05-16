@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitives ---
+    function isSignedIn() { return request.auth != null; }
+    function getUser(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+    function getRole() {
+      return isSignedIn() ? getUser(request.auth.uid).role.toUpperCase() : null;
+    }
+    function hasRole(role) {
+       return getRole() == role;
+    }
+    function isSystemAdmin() {
+      return hasRole('SYSTEM_ADMIN');
+    }
+    function sameHospital(hospitalId) {
+      return isSignedIn() && getUser(request.auth.uid).hospitalId == hospitalId;
+    }
+
+    // --- Match Rules ---
+
+    match /hospitals/{hospitalId} {
+      allow read: if isSignedIn();
+      allow write: if isSystemAdmin();
+    }
+
+    match /users/{userId} {
+      // allow list for username search (troubleshooting: limited list)
+      allow list: if true; 
+      allow get: if isSignedIn();
+      allow create: if isSystemAdmin();
+      allow update: if isSystemAdmin() || (isSignedIn() && request.auth.uid == userId);
+    }
+
+    match /patients/{patientId} {
+      allow read: if isSignedIn() && (isSystemAdmin() || sameHospital(resource.data.hospitalId));
+      allow write: if isSignedIn() && (isSystemAdmin() || sameHospital(request.resource.data.hospitalId));
+    }
+
+    match /inventory/{itemId} {
+      allow read: if isSignedIn() && (isSystemAdmin() || sameHospital(resource.data.hospitalId));
+      allow write: if isSignedIn() && (isSystemAdmin() || sameHospital(request.resource.data.hospitalId));
+    }
+
+    match /inventory_transactions/{id} {
+        allow read, write: if isSignedIn();
+    }
+    
+    match /medical_cases/{id} {
+        allow read, write: if isSignedIn();
+    }
+    
+    match /evolution_notes/{id} {
+        allow read, write: if isSignedIn();
+    }
+    
+    match /payments/{id} {
+        allow read, write: if isSignedIn();
+    }
+  }
+}

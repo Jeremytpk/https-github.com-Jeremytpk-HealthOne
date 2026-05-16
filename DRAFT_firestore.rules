@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // Get user data
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isStaffMember(hospitalId) {
+      return isSignedIn() && getUserData().hospitalId == hospitalId;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && getUserData().role == role;
+    }
+
+    function isSystemAdmin() {
+      return isSignedIn() && getUserData().role == 'SYSTEM_ADMIN';
+    }
+
+    // --- Collections ---
+
+    match /hospitals/{hospitalId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSystemAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || getUserData().hospitalId == existing().hospitalId);
+      allow create: if isSystemAdmin() || (isSignedIn() && getUserData().role == 'HR' && incoming().hospitalId == getUserData().hospitalId);
+      allow update: if isSystemAdmin() || (isSignedIn() && getUserData().role == 'HR' && incoming().hospitalId == existing().hospitalId);
+    }
+
+    match /patients/{patientId} {
+      allow read: if isSignedIn() && isStaffMember(existing().hospitalId);
+      allow create: if isSignedIn() && isStaffMember(incoming().hospitalId) && hasRole('RECEPTIONIST');
+      allow update: if isSignedIn() && isStaffMember(existing().hospitalId) && (hasRole('RECEPTIONIST') || hasRole('DOCTOR'));
+    }
+
+    match /medical_cases/{caseId} {
+      allow read: if isSignedIn() && isStaffMember(existing().hospitalId);
+      allow create: if isSignedIn() && isStaffMember(incoming().hospitalId) && (hasRole('DOCTOR') || hasRole('RECEPTIONIST'));
+      allow update: if isSignedIn() && isStaffMember(existing().hospitalId) && hasRole('DOCTOR');
+    }
+
+    match /evolution_notes/{noteId} {
+      allow read: if isSignedIn() && isStaffMember(existing().hospitalId);
+      allow create: if isSignedIn() && isStaffMember(incoming().hospitalId) && (hasRole('DOCTOR') || hasRole('NURSE'));
+    }
+
+    match /inventory/{itemId} {
+      allow read: if isSignedIn() && isStaffMember(existing().hospitalId);
+      allow create, update: if isSignedIn() && isStaffMember(incoming().hospitalId) && (hasRole('PHARMACIST') || hasRole('ADMIN'));
+    }
+
+    match /inventory_transactions/{transactionId} {
+      allow read: if isSignedIn() && isStaffMember(existing().hospitalId);
+      allow create: if isSignedIn() && isStaffMember(incoming().hospitalId);
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isSignedIn() && (isStaffMember(existing().hospitalId) && (hasRole('CASHIER') || hasRole('ADMIN')));
+      allow create: if isSignedIn() && isStaffMember(incoming().hospitalId) && hasRole('CASHIER');
+    }
+  }
+}

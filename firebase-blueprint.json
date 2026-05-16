@@ -1,0 +1,153 @@
+{
+  "entities": {
+    "Hospital": {
+      "title": "Hospital",
+      "description": "A hospital client/tenant in the system.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "contactEmail": { "type": "string", "format": "email" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "contactEmail", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Hospital staff member.",
+      "type": "object",
+      "properties": {
+        "hospitalId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["ADMIN", "DOCTOR", "NURSE", "CASHIER", "RECEPTIONIST", "PHARMACIST", "HR", "SYSTEM_ADMIN"] },
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "ON_VACATION", "OFF", "TERMINATED"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hospitalId", "email", "role", "name", "status"]
+    },
+    "Patient": {
+      "title": "Patient",
+      "description": "Patient record.",
+      "type": "object",
+      "properties": {
+        "hospitalId": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "dateOfBirth": { "type": "string", "format": "date" },
+        "gender": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hospitalId", "firstName", "lastName", "dateOfBirth", "createdAt"]
+    },
+    "MedicalCase": {
+      "title": "Medical Case",
+      "description": "A specific medical case or admission for a patient.",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string" },
+        "hospitalId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["OPEN", "CLOSED"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["patientId", "hospitalId", "title", "status", "createdAt"]
+    },
+    "EvolutionNote": {
+      "title": "Evolution Note",
+      "description": "Tracking patient evolution within a case.",
+      "type": "object",
+      "properties": {
+        "caseId": { "type": "string" },
+        "patientId": { "type": "string" },
+        "hospitalId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "content": { "type": "string" },
+        "step": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["caseId", "patientId", "hospitalId", "authorId", "content", "createdAt"]
+    },
+    "InventoryItem": {
+      "title": "Inventory Item",
+      "description": "Equipment or medicine in stock.",
+      "type": "object",
+      "properties": {
+        "hospitalId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["EQUIPMENT", "MEDICINE"] },
+        "stock": { "type": "integer" },
+        "unit": { "type": "string" },
+        "minStock": { "type": "integer" }
+      },
+      "required": ["hospitalId", "name", "type", "stock"]
+    },
+    "InventoryTransaction": {
+      "title": "Inventory Transaction",
+      "description": "Tracking in/out movement of items.",
+      "type": "object",
+      "properties": {
+        "hospitalId": { "type": "string" },
+        "itemId": { "type": "string" },
+        "type": { "type": "string", "enum": ["IN", "OUT"] },
+        "quantity": { "type": "integer" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hospitalId", "itemId", "type", "quantity", "userId", "createdAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Financial record for hospital services.",
+      "type": "object",
+      "properties": {
+        "hospitalId": { "type": "string" },
+        "patientId": { "type": "string" },
+        "caseId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["PAID", "PENDING"] },
+        "cashierId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hospitalId", "patientId", "amount", "status", "cashierId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/hospitals/{hospitalId}": {
+      "schema": "Hospital",
+      "description": "List of hospital tenants."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Staff members across all hospitals."
+    },
+    "/patients/{patientId}": {
+      "schema": "Patient",
+      "description": "Patient directory."
+    },
+    "/medical_cases/{caseId}": {
+      "schema": "MedicalCase",
+      "description": "Active and past medical cases."
+    },
+    "/evolution_notes/{noteId}": {
+      "schema": "EvolutionNote",
+      "description": "Daily or step-by-step progress notes."
+    },
+    "/inventory/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "Pharmacy and equipment inventory."
+    },
+    "/inventory_transactions/{transactionId}": {
+      "schema": "InventoryTransaction",
+      "description": "Stock movement logs."
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Billing records."
+    }
+  }
+}
