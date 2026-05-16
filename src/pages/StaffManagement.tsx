@@ -91,21 +91,21 @@ export default function StaffManagement() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-6 sm:space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-serif italic font-bold tracking-tight mb-2 uppercase">{t("staffManagement")}</h1>
-          <p className="text-sm font-mono opacity-50 uppercase tracking-widest">HR_MODULE / PERSONNEL_LOGS</p>
+          <h1 className="text-2xl sm:text-4xl font-serif italic font-bold tracking-tight mb-2 uppercase">{t("staffManagement")}</h1>
+          <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">HR_MODULE / PERSONNEL_LOGS</p>
         </div>
         <button 
           onClick={() => setShowAddModal(true)}
-          className="h-10 bg-app-ink text-app-bg px-6 flex items-center gap-2 font-mono uppercase text-xs tracking-widest hover:opacity-90 transition-all border border-app-line"
+          className="h-10 bg-app-ink text-app-bg px-6 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:opacity-90 transition-all border border-app-line w-full sm:w-auto"
         >
-          <UserPlus className="w-4 h-4" /> {t("staff")} [NEW_ENTRY]
+          <UserPlus className="w-4 h-4" /> {t("staff")} [{t("newRegistration").toUpperCase()}]
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         {staff.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())).map((s) => (
           <div key={s.id} className="bg-white border border-app-line p-6 relative group overflow-hidden">
              {/* Background Decoration */}
@@ -120,45 +120,45 @@ export default function StaffManagement() {
                 </div>
                 <div>
                   <h3 className="font-bold text-lg leading-tight">{s.name}</h3>
-                  <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">{s.role}</p>
+                  <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">{t(s.role)}</p>
                 </div>
               </div>
               <span className={`text-[9px] px-2 py-0.5 border font-mono uppercase ${getStatusColor(s.status)}`}>
-                {s.status}
+                {t(s.status)}
               </span>
             </div>
 
             <div className="space-y-2 mb-8">
                <div className="flex items-center gap-2 text-xs font-mono opacity-60">
-                 <Clock className="w-3 h-3" /> SHIFT_MON_FRI: 08:00 - 16:00
+                 <Clock className="w-3 h-3" /> {t("shiftMonFri")}
                </div>
             </div>
 
             <div className="flex items-center gap-1 border-t border-app-line pt-4">
               <button 
                 onClick={() => updateStatus(s.id, 'ACTIVE')}
-                title="Set Active"
+                title={t("setActive")}
                 className="flex-1 h-8 border border-app-line flex items-center justify-center hover:bg-green-50 transition-colors"
               >
                 <Power className="w-3 h-3 text-green-600" />
               </button>
               <button 
                 onClick={() => updateStatus(s.id, 'ON_VACATION')}
-                title="On Vacation"
+                title={t("onVacation")}
                 className="flex-1 h-8 border border-app-line flex items-center justify-center hover:bg-blue-50 transition-colors"
               >
                 <Plane className="w-3 h-3 text-blue-600" />
               </button>
               <button 
                 onClick={() => updateStatus(s.id, 'OFF')}
-                title="Off Duty"
+                title={t("offDuty")}
                 className="flex-1 h-8 border border-app-line flex items-center justify-center hover:bg-orange-50 transition-colors"
               >
                 <Calendar className="w-3 h-3 text-orange-600" />
               </button>
               <button 
                 onClick={() => updateStatus(s.id, 'TERMINATED')}
-                title="Terminate"
+                title={t("terminateAction")}
                 className="flex-1 h-8 border border-app-line flex items-center justify-center hover:bg-red-50 transition-colors"
               >
                 <UserMinus className="w-3 h-3 text-red-600" />
@@ -170,61 +170,61 @@ export default function StaffManagement() {
 
       {/* Add Staff Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-app-bg border border-app-line w-full max-w-md p-8 relative shadow-2xl">
-            <h2 className="text-2xl font-serif italic font-bold mb-6 border-b border-app-line pb-2">{t("staff")} [REG_FORM]</h2>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-app-bg border border-app-line w-full max-w-md my-auto p-6 sm:p-8 relative shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl sm:text-2xl font-serif italic font-bold mb-6 border-b border-app-line pb-2">{t("staff")} [REG_FORM]</h2>
             
-            <form onSubmit={handleAddStaff} className="space-y-6">
+            <form onSubmit={handleAddStaff} className="space-y-5">
               <div>
-                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">Full_Name</label>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">{t("fullName")}</label>
                 <input 
                   type="text" 
                   required 
                   value={newStaffData.name}
                   onChange={(e) => setNewStaffData({...newStaffData, name: e.target.value})}
-                  className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none"
+                  className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
                 />
               </div>
               <div>
-                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">Email_Address</label>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">{t("email")}</label>
                 <input 
                   type="email" 
                   required 
                   value={newStaffData.email}
                   onChange={(e) => setNewStaffData({...newStaffData, email: e.target.value})}
-                  className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none"
+                  className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
                 />
               </div>
               <div>
-                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">Designated_Role</label>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">{t("designatedRole")}</label>
                 <select 
                   value={newStaffData.role}
                   onChange={(e) => setNewStaffData({...newStaffData, role: e.target.value as UserRole})}
-                  className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none"
+                  className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
                 >
-                  <option value="DOCTOR">DOCTOR</option>
-                  <option value="NURSE">NURSE</option>
-                  <option value="RECEPTIONIST">RECEPTIONIST</option>
-                  <option value="PHARMACIST">PHARMACIST</option>
-                  <option value="CASHIER">CASHIER</option>
-                  <option value="HR">HR</option>
-                  <option value="ADMIN">ADMIN</option>
+                  <option value="DOCTOR">{t("doctor")}</option>
+                  <option value="NURSE">{t("nurse")}</option>
+                  <option value="RECEPTIONIST">{t("receptionist")}</option>
+                  <option value="PHARMACIST">{t("pharmacist")}</option>
+                  <option value="CASHIER">{t("cashier")}</option>
+                  <option value="HR">{t("hr")}</option>
+                  <option value="ADMIN">{t("admin")}</option>
                 </select>
               </div>
 
-              <div className="flex justify-end gap-4">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 pt-4 border-t border-app-line">
                 <button 
                   type="button" 
                   onClick={() => setShowAddModal(false)}
-                  className="px-6 py-2 border border-app-line font-mono text-xs uppercase hover:bg-gray-100 transition-colors"
+                  className="px-6 py-2 border border-app-line font-mono text-[10px] uppercase hover:bg-gray-100 transition-colors"
                 >
-                  HALT
+                  {t("halt")}
                 </button>
                 <button 
                   type="submit" 
-                  className="px-8 py-2 bg-app-ink text-app-bg font-mono text-xs uppercase hover:opacity-90 transition-opacity"
+                  className="px-8 py-2 bg-app-ink text-app-bg font-mono text-[10px] uppercase hover:opacity-90 transition-opacity"
                 >
-                  INITIALIZE_ENROLLMENT
+                  {t("accreditStaff")}
                 </button>
               </div>
             </form>

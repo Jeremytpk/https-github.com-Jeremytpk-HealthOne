@@ -139,84 +139,43 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard title="Total Lab Registry" value={patients.length.toString()} icon={Users} trend="+12 today" variant="dark" />
-        <StatCard title="Average Triage Wait" value="14 min" icon={Clock} trend="↑ 2m vs yesterday" />
-        <StatCard title="Insurance Verified" value="82%" icon={CheckCircle2} trend="Optimal" />
-        <StatCard title="Emergency Admits" value="03" icon={Activity} trend="Active Now" />
+        <StatCard title={t("labRegistry")} value={patients.length.toString()} icon={Users} trend="+12 today" variant="dark" />
+        <StatCard title={t("avgTriageWait")} value="14 min" icon={Clock} trend="↑ 2m vs yesterday" />
+        <StatCard title={t("insuranceVerified")} value="82%" icon={CheckCircle2} trend="Optimal" />
+        <StatCard title={t("emergencyAdmits")} value="03" icon={Activity} trend="Active Now" />
       </div>
       
-      <div className="grid grid-cols-12 gap-4">
-        <section className="col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[500px]">
-          <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2">
-               <Activity className="w-4 h-4 text-emerald-500" />
-               Recent Registrations
-            </h2>
-            <Link to="/patients" className="text-[10px] font-bold text-blue-500 hover:underline">VIEW ALL</Link>
-          </div>
-          <div className="flex-1 overflow-auto">
-            <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0 bg-white border-b border-slate-200 z-10 shadow-sm">
-                <tr className="text-[10px] font-bold text-slate-400 uppercase">
-                  <th className="p-3 pl-4">ID</th>
-                  <th className="p-3">Patient</th>
-                  <th className="p-3">GENDER</th>
-                  <th className="p-3">Contact</th>
-                  <th className="p-3">Age</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 text-xs italic">Syncing records...</td></tr>
-                ) : patients.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 text-xs italic">No patients registered yet.</td></tr>
-                ) : patients.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50 transition-colors group text-xs">
-                    <td className="p-3 pl-4 font-mono text-slate-400 italic">#{p.id.slice(-6).toUpperCase()}</td>
-                    <td className="p-3">
-                      <Link to={`/patients/${p.id}`} className="font-bold text-blue-600 hover:underline">
-                        {p.firstName} {p.lastName}
-                      </Link>
-                    </td>
-                    <td className="p-3 uppercase text-slate-500">{p.gender || 'N/A'}</td>
-                    <td className="p-3 text-slate-500 font-mono">{p.phone || 'No Contact'}</td>
-                    <td className="p-3 font-medium">{p.age || 'N/A'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        
-        <div className="col-span-4 space-y-4 h-[500px] flex flex-col">
-          <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-xl shadow-slate-200 flex-shrink-0">
-            <h3 className="text-xl font-bold tracking-tight mb-2 italic underline decoration-blue-500 underline-offset-4">Registration Terminal</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Registration Terminal & Today's Load Side-by-Side on top */}
+        <div className="col-span-1 lg:col-span-12 flex flex-col sm:flex-row gap-4">
+          <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-xl shadow-slate-200 flex-1">
+            <h3 className="text-xl font-bold tracking-tight mb-2 italic underline decoration-blue-500 underline-offset-4">{t("regTerminal")}</h3>
             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-6">Queue Management v4.2</p>
             
-            <div className="space-y-4">
+            <div className="flex flex-col md:flex-row gap-4">
               <Link 
                 to="/patients?register=true" 
-                className="w-full flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all group"
+                className="flex-1 flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all group"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
                     <Plus className="w-4 h-4" />
                   </div>
                   <div className="text-left">
-                    <p className="text-xs font-bold">New Registration</p>
+                    <p className="text-xs font-bold">{t("newRegistration")}</p>
                     <p className="text-[9px] text-slate-500">Add walk-in patient</p>
                   </div>
                 </div>
                 <ArrowUpRight className="w-3 h-3 text-slate-500 group-hover:text-white transition-colors" />
               </Link>
 
-              <button className="w-full flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all group opacity-50 cursor-not-allowed">
+              <button className="flex-1 flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all group opacity-50 cursor-not-allowed">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
                     <Users className="w-4 h-4" />
                   </div>
                   <div className="text-left">
-                    <p className="text-xs font-bold">Insurance Verify</p>
+                    <p className="text-xs font-bold">{t("insuranceVerify")}</p>
                     <p className="text-[9px] text-slate-500">Scan Policy ID</p>
                   </div>
                 </div>
@@ -224,22 +183,65 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 flex-1 flex flex-col justify-between">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex-1 flex flex-col justify-between min-h-[160px]">
             <div>
-              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Today's Appointment Load</p>
-              <h4 className="text-3xl font-black text-slate-800">12 / 24</h4>
+              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">{t("appointmentLoad")}</p>
+              <h4 className="text-4xl font-black text-slate-800 tracking-tight">12 / 24</h4>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex justify-between text-[10px] font-bold">
-                <span className="text-slate-400 uppercase">Daily Capacity</span>
+                <span className="text-slate-400 uppercase">{t("dailyCapacity")}</span>
                 <span className="text-blue-600">50%</span>
               </div>
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-blue-500 h-2 rounded-full w-1/2" />
+              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                <div className="bg-blue-500 h-2.5 rounded-full w-1/2" />
               </div>
             </div>
           </div>
         </div>
+
+        {/* Recent Registrations Table below */}
+        <section className="col-span-1 lg:col-span-12 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[400px]">
+          <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2">
+               <Activity className="w-4 h-4 text-emerald-500" />
+               {t("recentRegistrations")}
+            </h2>
+            <Link to="/patients" className="text-[10px] font-bold text-blue-500 hover:underline">{t("viewAll")}</Link>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="sticky top-0 bg-white border-b border-slate-200 z-10 shadow-sm">
+                <tr className="text-[10px] font-bold text-slate-400 uppercase">
+                  <th className="p-3 pl-4">ID</th>
+                  <th className="p-3">{t("patients")}</th>
+                  <th className="p-3 hidden sm:table-cell">GENDER</th>
+                  <th className="p-3 hidden sm:table-cell">Contact</th>
+                  <th className="p-3">Age</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 text-xs italic">{t("syncingRecords")}</td></tr>
+                ) : patients.length === 0 ? (
+                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 text-xs italic">{t("noPatientsRegistered")}</td></tr>
+                ) : patients.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors group text-xs text-nowrap lg:text-wrap">
+                    <td className="p-3 pl-4 font-mono text-slate-400 italic">#{p.id.slice(-6).toUpperCase()}</td>
+                    <td className="p-3">
+                      <Link to={`/patients/${p.id}`} className="font-bold text-blue-600 hover:underline">
+                        {p.firstName} {p.lastName}
+                      </Link>
+                    </td>
+                    <td className="p-3 uppercase text-slate-500 hidden sm:table-cell">{t(p.gender || 'NA')}</td>
+                    <td className="p-3 text-slate-500 font-mono hidden sm:table-cell">{p.phone || t("noContact")}</td>
+                    <td className="p-3 font-medium">{p.age || t("NA")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -248,40 +250,40 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
 const DoctorDashboard = ({ t }: any) => (
   <div className="space-y-4">
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <StatCard title="Active Consultations" value="04" icon={Users} trend="Current Shift" variant="dark" />
-      <StatCard title="Pending Lab Results" value="12" icon={Activity} trend="Critical: 02" />
-      <StatCard title="Surgeries Today" value="02" icon={Bed} trend="OR-1 Scheduled" />
-      <StatCard title="Avg Consult Time" value="18m" icon={Clock} trend="Within standard" />
+      <StatCard title={t("activeConsultations")} value="04" icon={Users} trend="Current Shift" variant="dark" />
+      <StatCard title={t("pendingLabResults")} value="12" icon={Activity} trend="Critical: 02" />
+      <StatCard title={t("surgeriesToday")} value="02" icon={Bed} trend="OR-1 Scheduled" />
+      <StatCard title={t("avgConsultTime")} value="18m" icon={Clock} trend="Within standard" />
     </div>
-    <div className="grid grid-cols-12 gap-4 h-[500px]">
-       <section className="col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-3 border-b border-slate-100 bg-slate-50/50 font-bold text-xs">My Patient Queue</div>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:h-[500px]">
+       <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[300px] lg:h-full">
+          <div className="p-3 border-b border-slate-100 bg-slate-50/50 font-bold text-xs">{t("myPatientQueue")}</div>
           <div className="p-0 overflow-auto">
-             <table className="w-full text-left text-xs">
+             <table className="w-full text-left text-xs min-w-[500px] lg:min-w-0">
                 <thead className="bg-slate-50 border-b border-slate-100">
-                   <tr className="text-[10px] text-slate-400">
-                      <th className="p-3 pl-4">Patient</th>
-                      <th className="p-3">Reason</th>
-                      <th className="p-3">Vitals Status</th>
-                      <th className="p-3">Action</th>
+                   <tr className="text-[10px] text-slate-400 uppercase">
+                      <th className="p-3 pl-4">{t("patients")}</th>
+                      <th className="p-3">{t("reason")}</th>
+                      <th className="p-3">{t("vitalsStatus")}</th>
+                      <th className="p-3 text-right pr-4">{t("action")}</th>
                    </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                    <tr>
                       <td className="p-3 pl-4 font-bold">Marc Dupont</td>
-                      <td className="p-3 text-slate-500">Persistent Fever (Lab Req)</td>
-                      <td className="p-3"><span className="text-emerald-500 font-bold">STABLE</span></td>
-                      <td className="p-3"><button className="px-2 py-1 bg-blue-600 text-white rounded font-bold text-[10px]">OPEN FILE</button></td>
+                      <td className="p-3 text-slate-500 italic">Persistent Fever (Lab Req)</td>
+                      <td className="p-3"><span className="text-emerald-500 font-bold uppercase">STABLE</span></td>
+                      <td className="p-3 text-right pr-4"><button className="px-2 py-1 bg-blue-600 text-white rounded font-bold text-[10px] uppercase">{t("openFile")}</button></td>
                    </tr>
                 </tbody>
              </table>
           </div>
        </section>
-       <div className="col-span-4 bg-blue-900 rounded-xl p-4 text-white">
-          <h4 className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Med-Bot Assistant</h4>
+       <div className="col-span-1 lg:col-span-4 bg-blue-900 rounded-xl p-4 text-white">
+          <h4 className="text-[10px] font-bold uppercase tracking-widest text-blue-300">{t("medBotAssistant")}</h4>
           <p className="text-xs mt-2 italic text-blue-100/70">"You have 2 pathology reports awaiting review from the morning rounds."</p>
           <div className="mt-4 pt-4 border-t border-blue-800">
-             <button className="text-[10px] font-bold underline">REVIEW LABS</button>
+             <button className="text-[10px] font-bold underline uppercase">{t("reviewLabs")}</button>
           </div>
        </div>
     </div>
@@ -291,34 +293,36 @@ const DoctorDashboard = ({ t }: any) => (
 const PharmacistDashboard = ({ t }: any) => (
   <div className="space-y-4">
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <StatCard title="Pending Prescriptions" value="18" icon={Package} trend="Live Queue" variant="dark" />
-      <StatCard title="Low Stock Alarms" value="06" icon={TrendingUp} trend="Needs ordering" />
-      <StatCard title="Narcotics Count" value="Verified" icon={CheckCircle2} trend="Confirmed 08:00" />
-      <StatCard title="Daily Turnover" value="$4,200" icon={TrendingUp} trend="↑ 5% vs Avg" />
+      <StatCard title={t("pendingPrescriptions")} value="18" icon={Package} trend="Live Queue" variant="dark" />
+      <StatCard title={t("lowStockAlarms")} value="06" icon={TrendingUp} trend="Needs ordering" />
+      <StatCard title={t("narcoticsCount")} value="Verified" icon={CheckCircle2} trend="Confirmed 08:00" />
+      <StatCard title={t("dailyTurnover")} value="$4,200" icon={TrendingUp} trend="↑ 5% vs Avg" />
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[500px]">
-       <div className="bg-white rounded-xl border p-4">
-          <h4 className="text-xs font-bold mb-4">Stock Utilization</h4>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
-              <YAxis fontSize={10} axisLine={false} tickLine={false} />
-              <Tooltip cursor={{fill: '#f8fafc'}} />
-              <Bar dataKey="patients" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:h-[500px]">
+       <div className="bg-white rounded-xl border p-4 h-[300px] lg:h-full">
+          <h4 className="text-xs font-bold mb-4">{t("stockUtilization")}</h4>
+          <div className="h-[200px] lg:h-[400px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
+                <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                <Tooltip cursor={{fill: '#f8fafc'}} />
+                <Bar dataKey="patients" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
        </div>
-       <div className="bg-slate-900 rounded-xl p-4 text-white overflow-y-auto">
-          <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-4">Dispensing Logs</h4>
+       <div className="bg-slate-900 rounded-xl p-4 text-white overflow-y-auto h-[300px] lg:h-full">
+          <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-4">{t("dispensingLogs")}</h4>
           <div className="space-y-3">
              {[1,2,3,4,5].map(i => (
                 <div key={i} className="flex items-center justify-between border-b border-slate-800 pb-2">
-                   <div>
-                      <p className="text-[10px] font-bold text-white">Amoxicillin 500mg (20u)</p>
-                      <p className="text-[9px] text-slate-500">Sarah Connor / Dr. Adams</p>
+                   <div className="pr-2">
+                      <p className="text-[10px] font-bold text-white truncate max-w-[150px] lg:max-w-none">Amoxicillin 500mg (20u)</p>
+                      <p className="text-[9px] text-slate-500 truncate max-w-[150px] lg:max-w-none">Sarah Connor / Dr. Adams</p>
                    </div>
-                   <span className="text-[9px] font-mono text-emerald-400">DISPENSED</span>
+                   <span className="text-[9px] font-mono text-emerald-400 shrink-0">DISPENSED</span>
                 </div>
              ))}
           </div>
@@ -330,19 +334,19 @@ const PharmacistDashboard = ({ t }: any) => (
 const CashierDashboard = ({ t }: any) => (
   <div className="space-y-4">
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <StatCard title="Revenue (Today)" value="$12,450" icon={TrendingUp} trend="+15% vs Goal" variant="dark" />
-      <StatCard title="Pending Invoices" value="23" icon={Clock} trend="Awaiting Insurar" />
-      <StatCard title="Successful Payments" value="42" icon={CheckCircle2} trend="Optimal flow" />
-      <StatCard title="Insurance Claims" value="08" icon={Activity} trend="Pending Review" />
+      <StatCard title={t("revenueToday")} value="$12,450" icon={TrendingUp} trend="+15% vs Goal" variant="dark" />
+      <StatCard title={t("pendingInvoices")} value="23" icon={Clock} trend="Awaiting Insurar" />
+      <StatCard title={t("successfulPayments")} value="42" icon={CheckCircle2} trend="Optimal flow" />
+      <StatCard title={t("insuranceClaims")} value="08" icon={Activity} trend="Pending Review" />
     </div>
-    <div className="bg-white rounded-xl border border-slate-200 h-[500px] flex flex-col">
-       <div className="p-4 border-b font-bold text-xs uppercase tracking-tight text-slate-500">Financial Stream Overview</div>
-       <div className="flex-1 p-4">
+    <div className="bg-white rounded-xl border border-slate-200 h-[400px] lg:h-[500px] flex flex-col">
+       <div className="p-4 border-b font-bold text-xs uppercase tracking-tight text-slate-500">{t("financialOverview")}</div>
+       <div className="flex-1 p-4 overflow-hidden">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data}>
                <CartesianGrid strokeDasharray="3 3" vertical={false} />
                <XAxis dataKey="name" fontSize={10} />
-               <YAxis fontSize={10} />
+               <YAxis fontSize={10} width={40} />
                <Tooltip />
                <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} dot={false} />
             </LineChart>
@@ -369,14 +373,14 @@ const AdminDashboard = ({ t }: any) => (
         <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">{t("reorders")}</p>
         <p className="text-2xl font-bold text-amber-600">08</p>
         <button className="w-full py-1 text-[9px] font-bold bg-slate-800 text-white rounded uppercase tracking-widest hover:bg-slate-700 transition-colors">
-          Auto-Restock All
+          {t("autoRestockAll")}
         </button>
       </div>
     </div>
 
-    <div className="grid grid-cols-12 gap-4 h-[500px]">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:h-[550px]">
       {/* Main Tracking Table */}
-      <section className="col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+      <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[400px] lg:h-full">
         <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2">
              <Activity className="w-4 h-4 text-blue-500" />
@@ -389,13 +393,13 @@ const AdminDashboard = ({ t }: any) => (
           </div>
         </div>
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse min-w-[600px] lg:min-w-0">
             <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
               <tr className="text-[10px] font-bold text-slate-400 uppercase">
                 <th className="p-3 pl-4">ID</th>
                 <th className="p-3">{t("patientName")}</th>
                 <th className="p-3">{t("stage")}</th>
-                <th className="p-3">{t("assignedDr")}</th>
+                <th className="p-3 hidden sm:table-cell">{t("assignedDr")}</th>
                 <th className="p-3">{t("wait")}</th>
                 <th className="p-3 pr-4">{t("status")}</th>
               </tr>
@@ -413,7 +417,7 @@ const AdminDashboard = ({ t }: any) => (
                   <td className="p-3 pl-4 font-mono text-slate-400">#{p.id}</td>
                   <td className="p-3 font-bold text-blue-600 group-hover:underline cursor-pointer">{p.name}</td>
                   <td className="p-3 text-slate-600 italic">{p.stage}</td>
-                  <td className="p-3">{p.dr}</td>
+                  <td className="p-3 hidden sm:table-cell">{p.dr}</td>
                   <td className="p-3 text-slate-400 font-mono">{p.wait}</td>
                   <td className="p-3 pr-4">
                     <span className="flex items-center gap-2 font-medium">
@@ -427,17 +431,17 @@ const AdminDashboard = ({ t }: any) => (
           </table>
         </div>
         <div className="p-2 px-4 bg-slate-50 text-[10px] text-slate-400 border-t border-slate-200 flex justify-between uppercase font-bold tracking-tighter">
-          <span>HIPAA Compliant Session Active</span>
-          <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> Audit Trail: Logged at 09:14:22 AM</span>
+          <span>HIPAA Compliant</span>
+          <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> 09:14:22 AM</span>
         </div>
       </section>
 
       {/* Right Sidebar Widgets */}
-      <div className="col-span-4 flex flex-col gap-4 overflow-hidden">
-        <section className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+      <div className="col-span-1 lg:col-span-4 flex flex-col gap-4 overflow-hidden lg:h-full">
+        <section className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[300px] lg:h-auto">
           <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <h2 className="font-bold text-[10px] uppercase tracking-wider text-slate-500">Staff Schedules</h2>
-            <button className="text-[9px] font-bold text-blue-500 hover:underline">View All</button>
+            <h2 className="font-bold text-[10px] uppercase tracking-wider text-slate-500">{t("staffSchedules")}</h2>
+            <button className="text-[9px] font-bold text-blue-500 hover:underline uppercase">{t("viewAll")}</button>
           </div>
           <div className="p-4 space-y-4 overflow-y-auto">
             <div className="flex items-start gap-3">
@@ -463,9 +467,9 @@ const AdminDashboard = ({ t }: any) => (
           </div>
         </section>
 
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-40 overflow-hidden">
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-40 overflow-hidden shrink-0">
           <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-            <h2 className="font-bold text-[10px] uppercase tracking-wider text-slate-500">Critical Inventory</h2>
+            <h2 className="font-bold text-[10px] uppercase tracking-wider text-slate-500 uppercase">{t("criticalInventory")}</h2>
           </div>
           <div className="p-3 overflow-y-auto space-y-2">
             {[
