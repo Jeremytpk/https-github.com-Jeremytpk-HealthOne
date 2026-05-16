@@ -12,7 +12,9 @@ import {
   LogOut,
   Search,
   Menu,
-  X
+  X,
+  Pin,
+  PinOff
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -156,38 +158,34 @@ const Layout: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0">
         {/* TOP HEADER */}
         <header className="h-16 lg:h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-6 flex-shrink-0">
-          <div className="flex items-center gap-3 lg:gap-6 flex-1">
+          <div className="flex items-center gap-2 lg:gap-4 flex-1">
             <button 
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              onDoubleClick={(e) => {
-                e.preventDefault();
-                setIsSidebarPinned(!isSidebarPinned);
-                if (!isSidebarPinned) {
-                  setIsMobileMenuOpen(false);
-                } else {
-                  setIsMobileMenuOpen(false);
-                }
-              }}
               className={`p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-all ${
-                isSidebarPinned ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-500/20' : ''
+                !isSidebarPinned && isMobileMenuOpen ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-500/20' : ''
               }`}
-              title="Click to toggle, Double-click to pin"
+              title="Toggle Menu"
             >
-              <Menu className={`w-5 h-5 transition-transform duration-300 ${isSidebarPinned ? 'rotate-90' : ''}`} />
+              <Menu className={`w-5 h-5 transition-transform duration-300 ${!isSidebarPinned && isMobileMenuOpen ? 'rotate-90' : ''}`} />
             </button>
 
-            {/* Always show extra menu icon on desktop for pinning logic even if sidebar is not hidden */}
-            {!isSidebarPinned && (
-              <button 
-                onDoubleClick={() => setIsSidebarPinned(true)}
-                className="hidden lg:flex p-2 hover:bg-slate-100 rounded-lg text-slate-400 opacity-20 hover:opacity-100 transition-all"
-                title="Double-click to pin sidebar"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
-            )}
+            <button 
+              onClick={() => {
+                const newState = !isSidebarPinned;
+                setIsSidebarPinned(newState);
+                if (newState) setIsMobileMenuOpen(false);
+              }}
+              className={`hidden md:flex p-2 hover:bg-slate-100 rounded-lg transition-all ${
+                isSidebarPinned 
+                  ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-500/20' 
+                  : 'text-slate-400 opacity-60 hover:opacity-100'
+              }`}
+              title={isSidebarPinned ? "Unpin Sidebar" : "Pin Sidebar"}
+            >
+              {isSidebarPinned ? <PinOff className="w-5 h-5" /> : <Pin className="w-5 h-5" />}
+            </button>
 
-            <form onSubmit={handleHeaderSearch} className="relative group flex-1 max-w-xs lg:max-w-md hidden sm:block">
+            <form onSubmit={handleHeaderSearch} className="relative group flex-1 max-w-xs lg:max-w-md hidden sm:block ml-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
               <input 
                 type="text" 
