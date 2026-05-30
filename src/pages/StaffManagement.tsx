@@ -12,6 +12,8 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
+import WorkCalendarModal from "../components/WorkCalendarModal";
+import MiniAuditedCalendar from "../components/MiniAuditedCalendar";
 import { 
   Users, 
   UserMinus, 
@@ -61,6 +63,19 @@ export default function StaffManagement() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [viewingStaffSchedule, setViewingStaffSchedule] = useState<any | null>(null);
+
+  const handleSaveStaffSchedule = async (newSchedule: string[]) => {
+    if (!viewingStaffSchedule) return;
+    try {
+      const docRef = doc(db, "users", viewingStaffSchedule.id);
+      await updateDoc(docRef, { schedule: newSchedule });
+      setStaff(prev => prev.map(u => u.id === viewingStaffSchedule.id ? { ...u, schedule: newSchedule } : u));
+      setViewingStaffSchedule({ ...viewingStaffSchedule, schedule: newSchedule });
+    } catch (err) {
+      console.error("Failed to update staff schedule:", err);
+    }
+  };
 
   // New Staff form
   const [newStaffData, setNewStaffData] = useState({
@@ -174,33 +189,33 @@ export default function StaffManagement() {
             </div>
 
             <div className="space-y-3 mb-6">
-              <div className="flex items-center gap-2 text-xs font-mono opacity-80 uppercase tracking-wider font-bold">
-                <Clock className="w-3.5 h-3.5 text-slate-400" /> {t("schedules") || "Schedule Availability"}
+              <div className="flex items-center justify-between text-xs font-mono opacity-80 uppercase tracking-wider font-bold">
+                <span className="flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" /> {t("schedules") || "Schedule Availability"}
+                </span>
+                
+                <button
+                  onClick={() => setViewingStaffSchedule(s)}
+                  title={language === 'fr' ? "Planifier par date" : "Schedule via Calendar"}
+                  className="p-1 px-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-100 rounded transition-colors cursor-pointer flex items-center gap-1 text-[9px] uppercase font-mono tracking-wider font-bold"
+                >
+                  <Calendar className="w-3 h-3" />
+                  {language === 'fr' ? "Calendrier" : "Calendar"}
+                </button>
               </div>
-              <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => {
-                  const staffSch = s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-                  const isSelected = staffSch.includes(day);
-                  const letter = language === 'fr' ? weekdayShortFr[day] : weekdayShortEn[day];
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => handleToggleStaffDay(s.id, staffSch, day)}
-                      title={language === 'fr' ? weekdayDisplayFr[day] : day}
-                      className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center transition-all cursor-pointer ${
-                        isSelected 
-                          ? 'bg-emerald-600 text-white font-black shadow-sm hover:bg-emerald-700' 
-                          : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                      }`}
-                    >
-                      {letter}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[9px] text-slate-400 italic">
-                {language === 'fr' ? "Cliquez sur les jours pour modifier" : "Click days to edit schedule"}
-              </p>
+
+              <MiniAuditedCalendar 
+                schedule={s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']}
+                onChangeSchedule={async (newSchedule) => {
+                  try {
+                    const docRef = doc(db, "users", s.id);
+                    await updateDoc(docRef, { schedule: newSchedule });
+                    setStaff(prev => prev.map(u => u.id === s.id ? { ...u, schedule: newSchedule } : u));
+                  } catch (err) {
+                    console.error("Failed to update staff schedule:", err);
+                  }
+                }}
+              />
             </div>
 
             <div className="flex items-center gap-1 border-t border-app-line pt-4">
@@ -301,6 +316,17 @@ export default function StaffManagement() {
             </form>
           </div>
         </div>
+      )}
+
+      {viewingStaffSchedule && (
+        <WorkCalendarModal 
+          isOpen={!!viewingStaffSchedule}
+          onClose={() => setViewingStaffSchedule(null)}
+          schedule={viewingStaffSchedule.schedule || []}
+          onSaveSchedule={handleSaveStaffSchedule}
+          name={viewingStaffSchedule.name}
+          role={t(viewingStaffSchedule.role)}
+        />
       )}
     </div>
   );

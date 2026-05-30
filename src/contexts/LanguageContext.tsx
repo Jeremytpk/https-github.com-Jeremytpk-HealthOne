@@ -272,7 +272,15 @@ const translations: Record<Language, Record<string, string>> = {
     REGISTER: "Registrar",
     recentlyAdded: "Recently Added",
     now: "NOW",
-    justNow: "JUST NOW"
+    justNow: "JUST NOW",
+    department: "Department",
+    selectDepartment: "Select Department",
+    pediatricsDept: "Pediatrics",
+    generalMedicineDept: "General Medicine",
+    emergencyDept: "Emergency",
+    cardiologyDept: "Cardiology",
+    deletePatientMsg: "Are you sure you want to delete this patient profile? This action is irreversible.",
+    deletePatient: "Delete Patient"
   },
   fr: {
     dashboard: "Tableau de Bord",
@@ -537,7 +545,15 @@ const translations: Record<Language, Record<string, string>> = {
     REGISTER: "Registrateur",
     recentlyAdded: "Récemment ajouté",
     now: "MAINTENANT",
-    justNow: "À L'INSTANT"
+    justNow: "À L'INSTANT",
+    department: "Département",
+    selectDepartment: "Sélectionner le Département",
+    pediatricsDept: "Pédiatrie",
+    generalMedicineDept: "Médecine Générale",
+    emergencyDept: "Urgences",
+    cardiologyDept: "Cardiologie",
+    deletePatientMsg: "Êtes-vous sûr de vouloir supprimer cette fiche patient ? Cette action est irréversible.",
+    deletePatient: "Supprimer le Patient"
   },
 };
 

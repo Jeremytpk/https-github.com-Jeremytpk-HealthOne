@@ -9,7 +9,10 @@ import {
   where, 
   onSnapshot, 
   orderBy, 
-  limit 
+  limit,
+  doc,
+  updateDoc,
+  deleteDoc
 } from "firebase/firestore";
 import { 
   Users, 
@@ -26,9 +29,14 @@ import {
   Database,
   Cpu,
   Layers,
-  Sparkles
+  Sparkles,
+  Calendar,
+  Trash2,
+  AlertCircle
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import WorkCalendarModal from "../components/WorkCalendarModal";
+import MiniAuditedCalendar from "../components/MiniAuditedCalendar";
 import { 
   BarChart, 
   Bar, 
@@ -298,6 +306,41 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
   const [patients, setPatients] = useState<any[]>([]);
   const [pediatricians, setPediatricians] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewingPedSchedule, setViewingPedSchedule] = useState<any | null>(null);
+
+  // Deletion States
+  const [patientToDelete, setPatientToDelete] = useState<any | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeletePatient = async () => {
+    if (!patientToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, "patients", patientToDelete.id));
+      setShowDeleteConfirm(false);
+      setPatientToDelete(null);
+    } catch (err) {
+      console.error("Failed to delete patient on dashboard:", err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleSavePedSchedule = async (newSchedule: string[]) => {
+    if (!viewingPedSchedule) return;
+    try {
+      await updateDoc(doc(db, "users", viewingPedSchedule.id), {
+        schedule: newSchedule
+      });
+      setViewingPedSchedule({
+        ...viewingPedSchedule,
+        schedule: newSchedule
+      });
+    } catch (err) {
+      console.error("Failed to update staff schedule:", err);
+    }
+  };
 
   const userRole = getNormalizedRole(profile?.role);
   const canAddPatient = userRole === 'REGISTER' || userRole === 'ADMIN' || userRole === 'SYSTEM_ADMIN' || userRole === 'SUP_ADMIN';
@@ -451,7 +494,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
         </div>
 
         {/* Recent Registrations Table layout on left (col-span-8) */}
-        <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[400px]">
+        <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[520px]">
           <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2">
                <Activity className="w-4 h-4 text-emerald-500" />
@@ -468,24 +511,46 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                   <th className="p-3 hidden sm:table-cell">{t("gender").toUpperCase()}</th>
                   <th className="p-3 hidden sm:table-cell">{t("contact")}</th>
                   <th className="p-3">{t("age")}</th>
+                  <th className="p-3 pr-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 text-xs italic">{t("syncingRecords")}</td></tr>
+                  <tr><td colSpan={6} className="p-8 text-center text-slate-400 text-xs italic">{t("syncingRecords")}</td></tr>
                 ) : patients.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 text-xs italic">{t("noPatientsRegistered")}</td></tr>
+                  <tr><td colSpan={6} className="p-8 text-center text-slate-400 text-xs italic">{t("noPatientsRegistered")}</td></tr>
                 ) : patients.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50 transition-colors group text-xs text-nowrap lg:text-wrap">
                     <td className="p-3 pl-4 font-mono text-slate-400 italic">#{p.id.slice(-6).toUpperCase()}</td>
                     <td className="p-3">
-                      <Link to={`/patients/${p.id}`} className="font-bold text-blue-600 hover:underline">
-                        {p.firstName} {p.lastName}
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Link to={`/patients/${p.id}`} className="font-bold text-blue-600 hover:underline">
+                          {p.firstName} {p.lastName}
+                        </Link>
+                        {p.department && (
+                          <span className="bg-purple-50 border border-purple-100 text-purple-700 text-[9px] font-mono uppercase font-bold px-1.5 py-0.5 rounded">
+                            {t(p.department === "Pediatrics" ? "pediatricsDept" : p.department === "General Medicine" ? "generalMedicineDept" : p.department === "Emergency" ? "emergencyDept" : p.department === "Cardiology" ? "cardiologyDept" : p.department)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-3 uppercase text-slate-500 hidden sm:table-cell">{t(p.gender?.toUpperCase() || 'NA')}</td>
                     <td className="p-3 text-slate-500 font-mono hidden sm:table-cell">{p.phone || t("noContact")}</td>
                     <td className="p-3 font-medium">{p.age || t("NA")}</td>
+                    <td className="p-3 pr-4 text-right whitespace-nowrap">
+                      {canAddPatient && ( // REGISTER, ADMIN, SYSTEM_ADMIN, SUP_ADMIN
+                        <button
+                          onClick={() => {
+                            setPatientToDelete(p);
+                            setShowDeleteConfirm(true);
+                          }}
+                          className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded transition-colors inline-block"
+                          title={t("deletePatient")}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -494,7 +559,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
         </section>
 
         {/* Pediatrician/Doctors schedules on right (col-span-4) */}
-        <div className="col-span-1 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
+        <div className="col-span-1 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[520px]">
           <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2 uppercase tracking-wide">
                <Clock className="w-4 h-4 text-blue-500" />
@@ -524,27 +589,32 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                       </span>
                     </div>
 
-                    <div className="mt-3">
-                      <p className="text-[9px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">{t("workingDays") || "Working Days"}:</p>
-                      <div className="flex items-center gap-1.5">
-                        {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => {
-                          const isActive = docSchedule.includes(day);
-                          const letter = language === 'fr' ? weekdayShortFr[day] : weekdayShortEn[day];
-                          return (
-                            <span
-                              key={day}
-                              title={language === 'fr' ? weekdayDisplayFr[day] : day}
-                              className={`w-6 h-6 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 transition-opacity ${
-                                isActive 
-                                  ? 'bg-emerald-500 text-white font-black shadow-sm' 
-                                  : 'bg-slate-100 text-slate-300'
-                              }`}
-                            >
-                              {letter}
-                            </span>
-                          );
-                        })}
+                    <div className="mt-3 space-y-2 border-t border-slate-100 pt-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider font-bold">
+                          {t("schedule") || "Schedule"}:
+                        </p>
+                        <button
+                          onClick={() => setViewingPedSchedule(ped)}
+                          className="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-100 text-[9px] font-mono font-bold tracking-wider uppercase flex items-center gap-1 cursor-pointer shrink-0"
+                        >
+                          <Calendar className="w-3 h-3" />
+                          {language === 'fr' ? "Gérer" : "Calendar"}
+                        </button>
                       </div>
+
+                      <MiniAuditedCalendar 
+                        schedule={docSchedule} 
+                        onChangeSchedule={async (newSchedule) => {
+                          try {
+                            await updateDoc(doc(db, "users", ped.id), {
+                              schedule: newSchedule
+                            });
+                          } catch (err) {
+                            console.error("Failed to update pediatrician schedule:", err);
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                 );
@@ -553,6 +623,60 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
           </div>
         </div>
       </div>
+
+      {viewingPedSchedule && (
+        <WorkCalendarModal 
+          isOpen={!!viewingPedSchedule}
+          onClose={() => setViewingPedSchedule(null)}
+          schedule={viewingPedSchedule.schedule || []}
+          onSaveSchedule={handleSavePedSchedule}
+          name={viewingPedSchedule.fullName || viewingPedSchedule.name || "Pediatrician"}
+          role={language === 'fr' ? "Pédiatre" : "Pediatrician"}
+        />
+      )}
+
+      {/* Delete Patient Confirmation Modal */}
+      {showDeleteConfirm && patientToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto w-full text-slate-800">
+          <div className="bg-white rounded-2xl border border-red-100 w-full max-w-md my-auto relative shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute top-0 left-0 w-full h-1 bg-red-500" />
+            <div className="p-6 sm:p-8 text-left">
+              <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-500" />
+                {t("deletePatient")}
+              </h2>
+              <p className="text-xs text-slate-500 leading-relaxed font-semibold mb-6">
+                {t("deletePatientMsg")}{" "}
+                <span className="font-bold text-slate-800 font-mono">
+                  ({patientToDelete.firstName} {patientToDelete.lastName})
+                </span>
+              </p>
+              
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t border-slate-100">
+                <button 
+                  type="button" 
+                  disabled={isDeleting}
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setPatientToDelete(null);
+                  }}
+                  className="px-6 py-2 bg-slate-50 border border-slate-200 text-slate-600 text-xs font-bold uppercase rounded-lg transition-colors hover:bg-slate-100 disabled:opacity-50"
+                >
+                  {t("cancel")}
+                </button>
+                <button 
+                  type="button" 
+                  disabled={isDeleting}
+                  onClick={handleDeletePatient}
+                  className="px-8 py-2 bg-red-600 text-white rounded-lg font-bold text-xs uppercase shadow-lg shadow-rose-200 hover:bg-red-700 transition-all active:scale-95"
+                >
+                  {isDeleting ? "..." : t("delete")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -593,6 +717,7 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [schedule, setSchedule] = useState<string[]>([]);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
 
   useEffect(() => {
     if (profile?.schedule) {
@@ -601,6 +726,15 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
       setSchedule(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']);
     }
   }, [profile?.schedule]);
+
+  const handleSaveSchedule = async (newSchedule: string[]) => {
+    setSchedule(newSchedule);
+    try {
+      await updateProfile({ schedule: newSchedule });
+    } catch (err) {
+      console.error("Failed to update schedule:", err);
+    }
+  };
 
   const toggleDay = async (day: string) => {
     let updatedSchedule = [...schedule];
@@ -655,41 +789,35 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
         <StatCard title={t("pendingLabResults")} value="12" icon={Activity} trend="Critical: 02" />
         
         {/* Interactive Pediatre Availability Card replacing Chirurgies Aujourd'hui */}
-        <div className="p-4 rounded-xl border flex flex-col justify-between shadow-sm relative overflow-hidden h-28 bg-white border-slate-200 text-slate-900 group">
-          <div className="flex flex-col gap-1 w-full">
-            <p className="text-[10px] uppercase font-bold tracking-wider text-slate-500">
-              {t("pediatreAvailability") || "Availability Schedule"}
-            </p>
-            <div className="flex items-center justify-between gap-1 mt-1">
-              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => {
-                const isSelected = schedule.includes(day);
-                const shortLabel = language === 'fr' 
-                  ? weekdayShortFr[day] 
-                  : weekdayShortEn[day];
-                return (
-                  <button
-                    key={day}
-                    onClick={() => toggleDay(day)}
-                    title={language === 'fr' ? weekdayDisplayFr[day] : day}
-                    className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center transition-all cursor-pointer ${
-                      isSelected 
-                        ? 'bg-blue-600 text-white shadow-sm font-black' 
-                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                    }`}
-                  >
-                    {shortLabel}
-                  </button>
-                );
-              })}
+        <button 
+          onClick={() => setShowCalendarModal(true)}
+          className="p-4 rounded-xl border flex flex-col justify-between shadow-sm relative overflow-hidden h-28 bg-white border-slate-200 text-slate-900 group cursor-pointer text-left hover:border-blue-500 hover:shadow-md transition-all duration-200"
+        >
+          <div className="flex items-start justify-between w-full">
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <p className="text-[9px] uppercase font-bold tracking-wider text-slate-400">
+                {language === 'fr' ? "PLANIFICATION" : "SCHEDULE"}
+              </p>
+              <h4 className="font-bold text-xs text-slate-800 leading-tight truncate">
+                {language === 'fr' ? "Calendrier de garde" : "Duty Schedule Calendar"}
+              </h4>
+            </div>
+            <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded">
+              <Calendar className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-[9px] font-medium text-emerald-600/90 tracking-tight mt-1 truncate">
-            {schedule.length > 0 
-              ? `${t("activeDays") || "Active"}: ${schedule.map(d => language === 'fr' ? weekdayShortFr[d].toUpperCase() : weekdayShortEn[d].toUpperCase()).join(', ')}`
-              : t("noDaysSelected") || "No days selected"
-            }
-          </p>
-        </div>
+          <div className="flex items-center justify-between w-full mt-1.5 pt-1.5 border-t border-slate-50">
+            <span className="text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded">
+              {schedule.some(item => item.includes("-")) 
+                ? `${schedule.filter(item => item.includes("-")).length} ${language === 'fr' ? "jours planifiés" : "days scheduled"}`
+                : `${schedule.length || 0} ${language === 'fr' ? "récurrents" : "recurring days"}`
+              }
+            </span>
+            <span className="text-[9px] font-mono text-blue-600 font-bold flex items-center gap-0.5">
+              {language === 'fr' ? "Ouvrir →" : "Open →"}
+            </span>
+          </div>
+        </button>
 
         <StatCard title={t("avgConsultTime")} value="18m" icon={Clock} trend="Within standard" />
       </div>
@@ -759,6 +887,15 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
             </div>
          </div>
       </div>
+
+      <WorkCalendarModal 
+        isOpen={showCalendarModal}
+        onClose={() => setShowCalendarModal(false)}
+        schedule={schedule}
+        onSaveSchedule={handleSaveSchedule}
+        name={profile?.fullName || profile?.name || "Dr. Staff"}
+        role={t("DOCTOR") || "Doctor"}
+      />
     </div>
   );
 };

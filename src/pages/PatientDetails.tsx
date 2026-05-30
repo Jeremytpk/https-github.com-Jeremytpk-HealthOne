@@ -16,6 +16,7 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
+import { getNormalizedRole } from "../lib/utils";
 import { 
   Calendar, 
   Phone, 
@@ -80,6 +81,27 @@ export default function PatientDetails() {
   const [showDeleteCaseConfirm, setShowDeleteCaseConfirm] = useState(false);
   const [showCloseCaseConfirm, setShowCloseCaseConfirm] = useState(false);
   const [showReopenCaseConfirm, setShowReopenCaseConfirm] = useState(false);
+
+  // Patient Deletion States
+  const [showDeletePatientConfirm, setShowDeletePatientConfirm] = useState(false);
+  const [isDeletingPatient, setIsDeletingPatient] = useState(false);
+
+  const userRole = getNormalizedRole(profile?.role);
+  const canDeletePatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+
+  const handleDeletePatient = async () => {
+    if (!patient || !profile) return;
+    setIsDeletingPatient(true);
+    try {
+      await deleteDoc(doc(db, "patients", patient.id));
+      setShowDeletePatientConfirm(false);
+      navigate("/patients");
+    } catch (error) {
+      console.error("Error deleting patient:", error);
+    } finally {
+      setIsDeletingPatient(false);
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -318,23 +340,40 @@ export default function PatientDetails() {
   return (
     <div className="space-y-6">
       {/* Header with Back */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 border-b border-app-line pb-6">
-        <button 
-          onClick={() => navigate("/patients")}
-          className="p-2 hover:bg-black/5 transition-colors border border-app-line shrink-0"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl sm:text-3xl font-serif italic font-bold tracking-tight truncate">
-            {patient.firstName} {patient.lastName}
-          </h1>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-[10px] font-mono opacity-50 uppercase tracking-widest">
-            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {t("birthDate").toUpperCase()}: {patient.dateOfBirth}</span>
-            <span className="flex items-center gap-1"><User className="w-3 h-3" /> {t(patient.gender?.toUpperCase() || 'OTHER')}</span>
-            <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {patient.phone || t("NO_PHONE")}</span>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-app-line pb-6 w-full">
+        <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1">
+          <button 
+            onClick={() => navigate("/patients")}
+            className="p-2 hover:bg-black/5 transition-colors border border-app-line shrink-0"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl sm:text-3xl font-serif italic font-bold tracking-tight truncate flex flex-wrap items-center gap-2">
+              <span>{patient.firstName} {patient.lastName}</span>
+              {patient.department && (
+                <span className="bg-purple-50 border border-purple-100 text-purple-700 text-[10px] font-mono uppercase font-bold px-2 py-0.5 tracking-wider rounded">
+                  {t(patient.department === "Pediatrics" ? "pediatricsDept" : patient.department === "General Medicine" ? "generalMedicineDept" : patient.department === "Emergency" ? "emergencyDept" : patient.department === "Cardiology" ? "cardiologyDept" : patient.department)}
+                </span>
+              )}
+            </h1>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-[10px] font-mono opacity-50 uppercase tracking-widest">
+              <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {t("birthDate").toUpperCase()}: {patient.dateOfBirth}</span>
+              <span className="flex items-center gap-1"><User className="w-3 h-3" /> {t(patient.gender?.toUpperCase() || 'OTHER')}</span>
+              <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {patient.phone || t("NO_PHONE")}</span>
+            </div>
           </div>
         </div>
+        
+        {canDeletePatient && (
+          <button
+            onClick={() => setShowDeletePatientConfirm(true)}
+            className="flex items-center gap-1.5 h-9 px-4 text-[10px] sm:self-center font-mono border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 uppercase tracking-wider font-bold transition-all shadow-none shrink-0"
+            title={t("deletePatient")}
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" /> {t("deletePatient")}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
@@ -943,6 +982,39 @@ export default function PatientDetails() {
                 className="px-8 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-mono text-[10px] uppercase tracking-widest transition-colors font-bold"
               >
                 {language === 'fr' ? 'CONTINUER' : 'CONTINUE'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Deleting Patient Profile Warning Modal */}
+      {showDeletePatientConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-rose-200 w-full max-w-md my-auto p-6 sm:p-8 relative shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-lg font-bold mb-4 font-mono text-rose-600 uppercase tracking-wider flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" /> 
+              {t("deletePatient")}
+            </h2>
+            <p className="text-xs font-mono text-slate-600 leading-relaxed mb-8">
+              {t("deletePatientMsg")}
+            </p>
+            
+            <div className="flex flex-col sm:flex-row justify-end gap-3 sm:gap-4 mt-4 pt-4 border-t border-slate-100">
+              <button 
+                type="button" 
+                disabled={isDeletingPatient}
+                onClick={() => setShowDeletePatientConfirm(false)}
+                className="px-6 py-2.5 border border-slate-200 font-mono text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-colors"
+              >
+                {t("cancel") || "No"}
+              </button>
+              <button 
+                type="button" 
+                disabled={isDeletingPatient}
+                onClick={handleDeletePatient}
+                className="px-8 py-2.5 bg-red-600 hover:bg-red-700 text-white font-mono text-[10px] uppercase tracking-widest transition-colors font-bold"
+              >
+                {isDeletingPatient ? "..." : t("delete")}
               </button>
             </div>
           </div>

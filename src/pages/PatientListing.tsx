@@ -7,12 +7,14 @@ import {
   addDoc, 
   serverTimestamp,
   getDocs,
-  limit
+  limit,
+  doc,
+  deleteDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
-import { Search, UserPlus, ArrowRight, User } from "lucide-react";
+import { Search, UserPlus, ArrowRight, User, Trash2, AlertCircle } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getNormalizedRole } from "../lib/utils";
 
@@ -26,8 +28,14 @@ export default function PatientListing() {
   const [loading, setLoading] = useState(true);
   const [showRegModal, setShowRegModal] = useState(false);
 
+  // Deletion State
+  const [patientToDelete, setPatientToDelete] = useState<any | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const userRole = getNormalizedRole(profile?.role);
   const canAddPatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+  const canDeletePatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
 
   useEffect(() => {
     const querySearch = searchParams.get("search");
@@ -46,8 +54,23 @@ export default function PatientListing() {
     dateOfBirth: "",
     gender: "Other",
     phone: "",
-    email: ""
+    email: "",
+    department: "General Medicine"
   });
+
+  const handleDeletePatient = async () => {
+    if (!patientToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, "patients", patientToDelete.id));
+      setShowDeleteConfirm(false);
+      setPatientToDelete(null);
+    } catch (err) {
+      console.error("Failed to delete patient:", err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -215,8 +238,8 @@ export default function PatientListing() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-3 hidden md:table-cell">
-                      <div className="flex gap-2">
+                     <td className="p-3 hidden md:table-cell">
+                      <div className="flex flex-wrap gap-2">
                         <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-600 uppercase">
                           {t(p.gender?.toUpperCase() || 'OTHER').charAt(0)} / {p.dateOfBirth}
                         </span>
@@ -225,15 +248,33 @@ export default function PatientListing() {
                             {p.age} Y {t("years")}
                           </span>
                         )}
+                        {p.department && (
+                          <span className="bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded text-[10px] font-bold text-purple-700 uppercase font-mono">
+                            {t(p.department === "Pediatrics" ? "pediatricsDept" : p.department === "General Medicine" ? "generalMedicineDept" : p.department === "Emergency" ? "emergencyDept" : p.department === "Cardiology" ? "cardiologyDept" : p.department)}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="p-3 text-slate-500 font-mono text-[10px] uppercase hidden sm:table-cell">
                       {p.phone || t("NO_PHONE")}
                     </td>
                     <td className="p-3 pr-4 sm:pr-6 whitespace-nowrap">
-                      <div className="flex justify-end">
+                      <div className="flex justify-end items-center gap-2">
+                        {canDeletePatient && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPatientToDelete(p);
+                              setShowDeleteConfirm(true);
+                            }}
+                            className="w-7 h-7 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-all border border-transparent hover:border-rose-100 cursor-pointer"
+                            title={t("deletePatient")}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <div className="w-6 h-6 rounded bg-slate-100 text-slate-400 flex items-center justify-center sm:opacity-0 group-hover:opacity-100 transition-all border border-slate-200">
-                          <ArrowRight className="w-3 h-3 text-blue-600" />
+                          <ArrowRight className="w-3.5 h-3.5 text-blue-600" />
                         </div>
                       </div>
                     </td>
@@ -329,6 +370,19 @@ export default function PatientListing() {
                        <option value="Other">{t("other")}</option>
                      </select>
                   </div>
+                  <div>
+                     <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("department")}</label>
+                     <select 
+                      value={formData.department}
+                      onChange={(e) => setFormData({...formData, department: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                     >
+                       <option value="General Medicine">{t("generalMedicineDept")}</option>
+                       <option value="Pediatrics">{t("pediatricsDept")}</option>
+                       <option value="Emergency">{t("emergencyDept")}</option>
+                       <option value="Cardiology">{t("cardiologyDept")}</option>
+                     </select>
+                  </div>
                 </div>
 
                 <div className="sm:col-span-2 flex flex-col gap-3 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-slate-100">
@@ -356,6 +410,49 @@ export default function PatientListing() {
                   </div>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Patient Confirmation Modal */}
+      {showDeleteConfirm && patientToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-red-100 w-full max-w-md my-auto relative shadow-22xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute top-0 left-0 w-full h-1 bg-red-500" />
+            <div className="p-6 sm:p-8">
+              <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-500" />
+                {t("deletePatient")}
+              </h2>
+              <p className="text-xs text-slate-500 leading-relaxed font-semibold mb-6">
+                {t("deletePatientMsg")}{" "}
+                <span className="font-bold text-slate-800 font-mono">
+                  ({patientToDelete.firstName} {patientToDelete.lastName})
+                </span>
+              </p>
+              
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t border-slate-100">
+                <button 
+                  type="button" 
+                  disabled={isDeleting}
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setPatientToDelete(null);
+                  }}
+                  className="px-6 py-2 bg-slate-50 border border-slate-200 text-slate-600 text-xs font-bold uppercase rounded-lg transition-colors hover:bg-slate-100 disabled:opacity-50"
+                >
+                  {t("cancel")}
+                </button>
+                <button 
+                  type="button" 
+                  disabled={isDeleting}
+                  onClick={handleDeletePatient}
+                  className="px-8 py-2 bg-red-600 text-white rounded-lg font-bold text-xs uppercase shadow-lg shadow-rose-200 hover:bg-red-700 transition-all active:scale-95 disabled:bg-slate-400"
+                >
+                  {isDeleting ? "..." : t("delete")}
+                </button>
+              </div>
             </div>
           </div>
         </div>
