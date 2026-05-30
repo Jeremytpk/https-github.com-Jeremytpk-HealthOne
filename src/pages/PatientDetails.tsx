@@ -86,8 +86,58 @@ export default function PatientDetails() {
   const [showDeletePatientConfirm, setShowDeletePatientConfirm] = useState(false);
   const [isDeletingPatient, setIsDeletingPatient] = useState(false);
 
+  // Patient Edit States
+  const [showEditPatientModal, setShowEditPatientModal] = useState(false);
+  const [isSavingPatient, setIsSavingPatient] = useState(false);
+  const [editPatientForm, setEditPatientForm] = useState({
+    firstName: "",
+    lastName: "",
+    dateOfBirth: "",
+    gender: "Other",
+    phone: "",
+    email: "",
+    department: "General Medicine",
+  });
+
   const userRole = getNormalizedRole(profile?.role);
   const canDeletePatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+  const canEditPatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+
+  const handleOpenEditPatient = () => {
+    if (!patient) return;
+    setEditPatientForm({
+      firstName: patient.firstName || "",
+      lastName: patient.lastName || "",
+      dateOfBirth: patient.dateOfBirth || "",
+      gender: patient.gender || "Other",
+      phone: patient.phone || "",
+      email: patient.email || "",
+      department: patient.department || "General Medicine",
+    });
+    setShowEditPatientModal(true);
+  };
+
+  const handleSavePatient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!patient || !profile) return;
+    setIsSavingPatient(true);
+    try {
+      const birthDate = new Date(editPatientForm.dateOfBirth);
+      const age = new Date().getFullYear() - birthDate.getFullYear();
+
+      await updateDoc(doc(db, "patients", patient.id), {
+        ...editPatientForm,
+        age,
+        updatedAt: serverTimestamp(),
+      });
+      await fetchPatient(); // Refresh details
+      setShowEditPatientModal(false);
+    } catch (error) {
+      console.error("Error editing patient details:", error);
+    } finally {
+      setIsSavingPatient(false);
+    }
+  };
 
   const handleDeletePatient = async () => {
     if (!patient || !profile) return;
@@ -365,15 +415,26 @@ export default function PatientDetails() {
           </div>
         </div>
         
-        {canDeletePatient && (
-          <button
-            onClick={() => setShowDeletePatientConfirm(true)}
-            className="flex items-center gap-1.5 h-9 px-4 text-[10px] sm:self-center font-mono border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 uppercase tracking-wider font-bold transition-all shadow-none shrink-0"
-            title={t("deletePatient")}
-          >
-            <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" /> {t("deletePatient")}
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2 sm:self-center shrink-0">
+          {canEditPatient && (
+            <button
+              onClick={handleOpenEditPatient}
+              className="flex items-center gap-1.5 h-9 px-4 text-[10px] font-mono border border-sky-200 text-sky-600 hover:bg-sky-50 hover:border-sky-300 uppercase tracking-wider font-bold transition-all shadow-none shrink-0"
+              title={t("editPatient") || "Edit Patient"}
+            >
+              <Pencil className="w-3.5 h-3.5 text-sky-600 shrink-0" /> {t("editPatient") || "Edit Patient"}
+            </button>
+          )}
+          {canDeletePatient && (
+            <button
+              onClick={() => setShowDeletePatientConfirm(true)}
+              className="flex items-center gap-1.5 h-9 px-4 text-[10px] font-mono border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 uppercase tracking-wider font-bold transition-all shadow-none shrink-0"
+              title={t("deletePatient")}
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" /> {t("deletePatient")}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
@@ -1017,6 +1078,122 @@ export default function PatientDetails() {
                 {isDeletingPatient ? "..." : t("delete")}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Patient Info Modal */}
+      {showEditPatientModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 w-full max-w-lg my-auto relative shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-slate-800">
+            <div className="absolute top-0 left-0 w-full h-1 bg-sky-500" />
+            <form onSubmit={handleSavePatient} className="p-6 sm:p-8 space-y-4">
+              <h2 className="text-lg font-bold font-mono text-sky-600 uppercase tracking-wider flex items-center gap-2 mb-2">
+                <Pencil className="w-5 h-5 text-sky-500 shrink-0" /> 
+                {t("editPatient") || "Edit Patient Information"}
+              </h2>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("firstName") || "First Name"}</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={editPatientForm.firstName}
+                    onChange={(e) => setEditPatientForm({...editPatientForm, firstName: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 p-2 text-sm focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none transition-all font-sans font-medium rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("lastName") || "Last Name"}</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={editPatientForm.lastName}
+                    onChange={(e) => setEditPatientForm({...editPatientForm, lastName: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 p-2 text-sm focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none transition-all font-sans font-medium rounded"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("birthDate") || "Date of Birth"}</label>
+                  <input 
+                    type="date" 
+                    required 
+                    value={editPatientForm.dateOfBirth}
+                    onChange={(e) => setEditPatientForm({...editPatientForm, dateOfBirth: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 p-2 text-sm focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none transition-all font-mono rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("gender") || "Gender"}</label>
+                  <select 
+                    value={editPatientForm.gender}
+                    onChange={(e) => setEditPatientForm({...editPatientForm, gender: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 p-2 text-sm focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none transition-all font-sans font-medium rounded"
+                  >
+                    <option value="Male">{t("MALE") || "Male"}</option>
+                    <option value="Female">{t("FEMALE") || "Female"}</option>
+                    <option value="Other">{t("OTHER") || "Other"}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("phone") || "Phone"}</label>
+                  <input 
+                    type="tel" 
+                    value={editPatientForm.phone}
+                    onChange={(e) => setEditPatientForm({...editPatientForm, phone: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 p-2 text-sm focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none transition-all font-mono rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("email") || "Email"}</label>
+                  <input 
+                    type="email" 
+                    value={editPatientForm.email}
+                    onChange={(e) => setEditPatientForm({...editPatientForm, email: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 p-2 text-sm focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none transition-all font-sans rounded"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("department")}</label>
+                <select 
+                  value={editPatientForm.department}
+                  onChange={(e) => setEditPatientForm({...editPatientForm, department: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 p-2 text-sm focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none transition-all font-sans font-medium rounded"
+                >
+                  <option value="General Medicine">{t("generalMedicineDept")}</option>
+                  <option value="Pediatrics">{t("pediatricsDept")}</option>
+                  <option value="Emergency">{t("emergencyDept")}</option>
+                  <option value="Cardiology">{t("cardiologyDept")}</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 pt-4 border-t border-slate-100">
+                <button 
+                  type="button" 
+                  disabled={isSavingPatient}
+                  onClick={() => setShowEditPatientModal(false)}
+                  className="px-6 py-2.5 border border-slate-200 font-mono text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-colors"
+                >
+                  {t("cancel") || "No"}
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSavingPatient}
+                  className="px-8 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-mono text-[10px] uppercase tracking-widest transition-colors font-bold shadow-md shadow-sky-100"
+                >
+                  {isSavingPatient ? "..." : t("save") || "Save"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
