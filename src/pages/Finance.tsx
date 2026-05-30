@@ -25,7 +25,7 @@ import { format } from "date-fns";
 
 export default function Finance() {
   const { hospitalId, profile } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -47,11 +47,15 @@ export default function Finance() {
     setLoading(true);
     const q = query(
       collection(db, "payments"), 
-      where("hospitalId", "==", hospitalId),
-      orderBy("createdAt", "desc")
+      where("hospitalId", "==", hospitalId)
     );
     const querySnapshot = await getDocs(q);
-    setPayments(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const fetchedPayments = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    fetchedPayments.sort((a: any, b: any) => {
+      const getMillis = (t: any) => t && typeof t.toMillis === 'function' ? t.toMillis() : (t?.seconds ? t.seconds * 1000 : 0);
+      return getMillis(b.createdAt) - getMillis(a.createdAt);
+    });
+    setPayments(fetchedPayments);
     setLoading(false);
   };
 
@@ -121,7 +125,7 @@ export default function Finance() {
             {payments.map((p) => (
               <div key={p.id} className="grid grid-cols-[1fr_120px] sm:grid-cols-[1fr_1.5fr_1fr_120px] lg:grid-cols-[1fr_1.5fr_1fr_1fr_120px] p-3 sm:p-4 items-center hover:bg-gray-50 transition-colors group">
                 <span className="text-[10px] font-mono opacity-50 hidden sm:block">
-                  {p.createdAt ? format(p.createdAt.toDate(), 'MMM dd, HH:mm') : 'JUST_NOW'}
+                  {p.createdAt ? format(p.createdAt.toDate(), language === 'fr' ? 'dd/MM, HH:mm' : 'MMM dd, HH:mm') : (t("justNow") || 'JUST_NOW')}
                 </span>
                 <div className="flex flex-col pr-2">
                   <span className="font-bold text-xs sm:text-sm truncate">{p.patientName}</span>
@@ -137,7 +141,7 @@ export default function Finance() {
                 </div>
                 <div className="flex justify-end">
                    <span className="text-[8px] sm:text-[9px] px-1.5 sm:px-2 py-0.5 border border-green-200 bg-green-50 text-green-700 font-mono uppercase tracking-widest truncate">
-                     {p.status}
+                     {t(p.status)}
                    </span>
                 </div>
               </div>

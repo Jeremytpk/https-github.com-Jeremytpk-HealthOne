@@ -26,7 +26,7 @@ service cloud.firestore {
     }
 
     function isSystemAdmin() {
-      return isSignedIn() && getUserData().role == 'SYSTEM_ADMIN';
+      return isSignedIn() && (getUserData().role == 'SYSTEM_ADMIN' || getUserData().role == 'SUP_ADMIN');
     }
 
     // --- Collections ---
@@ -72,6 +72,14 @@ service cloud.firestore {
     match /payments/{paymentId} {
       allow read: if isSignedIn() && (isStaffMember(existing().hospitalId) && (hasRole('CASHIER') || hasRole('ADMIN')));
       allow create: if isSignedIn() && isStaffMember(incoming().hospitalId) && hasRole('CASHIER');
+    }
+
+    match /healthone/{id} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /healthone_hospitals/{id} {
+      allow read, write: if isSignedIn();
     }
   }
 }

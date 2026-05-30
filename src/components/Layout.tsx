@@ -20,6 +20,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
 import { auth } from "../firebase";
 import { motion, AnimatePresence } from "motion/react";
+import { getNormalizedRole } from "../lib/utils";
 
 const Layout: React.FC = () => {
   const { profile } = useAuth();
@@ -44,16 +45,17 @@ const Layout: React.FC = () => {
     { path: "/", icon: LayoutDashboard, label: t("dashboard"), roles: ['ADMIN', 'DOCTOR', 'NURSE', 'CASHIER', 'RECEPTIONIST', 'REGISTER', 'PHARMACIST', 'HR', 'SYSTEM_ADMIN'] },
     { path: "/patients", icon: UserRound, label: t("patients"), roles: ['ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST', 'REGISTER', 'CASHIER'] },
     { path: "/staff", icon: Users, label: t("staff"), roles: ['ADMIN', 'HR', 'SYSTEM_ADMIN'] },
-    { path: "/inventory", icon: Package, label: t("inventory"), roles: ['ADMIN', 'PHARMACIST'] },
-    { path: "/pharmacy", icon: Pill, label: t("pharmacy"), roles: ['ADMIN', 'PHARMACIST', 'DOCTOR'] },
+    { path: "/inventory", icon: Package, label: t("inventory"), roles: ['ADMIN', 'PHARMACIST', 'PHARMACIE', 'INVENTAIRE', 'INVENTORY'] },
+    { path: "/pharmacy", icon: Pill, label: t("pharmacy"), roles: ['ADMIN', 'PHARMACIST', 'PHARMACIE', 'DOCTOR'] },
     { path: "/finance", icon: Wallet, label: t("finance"), roles: ['ADMIN', 'CASHIER'] },
-    { path: "/system-admin", icon: ShieldAlert, label: t("systemAdmin"), roles: ['SYSTEM_ADMIN'] },
+    { path: "/system-admin", icon: ShieldAlert, label: t("systemAdmin"), roles: ['SYSTEM_ADMIN', 'SUP_ADMIN'] },
   ];
 
   const filteredNav = navItems.filter(item => {
-    if (!item.roles) return true;
     if (!profile) return false;
-    const userRole = profile.role?.toUpperCase();
+    const userRole = getNormalizedRole(profile.role);
+    if (userRole === 'ADMIN' || userRole === 'SYSTEM_ADMIN' || userRole === 'SUP_ADMIN') return true;
+    if (!item.roles) return true;
     return item.roles.includes(userRole);
   });
 
@@ -74,6 +76,28 @@ const Layout: React.FC = () => {
         <p className="text-slate-400 text-[10px] uppercase tracking-widest mt-1">
           {profile?.hospital?.name || profile?.hospitalName || (typeof profile?.hospital === 'string' ? profile.hospital : t("hospitalName"))}
         </p>
+      </div>
+
+      {/* User Profile Summary Card */}
+      <div className="mx-4 mt-4 p-3 bg-slate-800/60 border border-slate-700/60 rounded-lg flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-400 border border-blue-550/20 flex items-center justify-center font-bold text-xs uppercase shrink-0">
+          {(profile?.fullName || profile?.name || 'U').charAt(0)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold text-slate-100 leading-tight truncate">
+            {profile?.fullName || profile?.name || 'User'}
+          </p>
+          <p className="text-[9px] text-slate-400 uppercase tracking-widest mt-0.5 truncate font-mono">
+            {profile?.role ? t(profile.role.toUpperCase()) : t("Staff")}
+          </p>
+          <Link 
+            to="/profile"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="text-[9px] text-blue-400 hover:text-blue-300 hover:underline transition-all font-mono uppercase mt-1.5 inline-block font-bold"
+          >
+            {t("editProfile")} →
+          </Link>
+        </div>
       </div>
 
       <div className="flex-1 py-4 flex flex-col gap-1 overflow-y-auto">
@@ -210,15 +234,15 @@ const Layout: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 lg:gap-4 ml-4">
+          <Link to="/profile" className="flex items-center gap-3 lg:gap-4 ml-4 group hover:opacity-90 transition-opacity">
             <div className="text-right hidden xs:block">
-              <p className="text-xs font-bold leading-none">{profile?.fullName || profile?.name || 'User'}</p>
-              <p className="text-[9px] text-slate-500 uppercase tracking-tighter mt-1">{profile?.role || 'Staff'}</p>
+              <p className="text-xs font-bold leading-none group-hover:text-blue-600 transition-colors">{profile?.fullName || profile?.name || 'User'}</p>
+              <p className="text-[9px] text-slate-500 uppercase tracking-tighter mt-1">{profile?.role ? t(profile.role.toUpperCase()) : t("Staff")}</p>
             </div>
-            <div className="w-8 lg:w-9 h-8 lg:h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs border-2 border-white shadow-sm uppercase shrink-0">
+            <div className="w-8 lg:w-9 h-8 lg:h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs border-2 border-white group-hover:border-blue-500 shadow-sm uppercase shrink-0 transition-all font-sans">
               {(profile?.fullName || profile?.name || 'U').charAt(0)}
             </div>
-          </div>
+          </Link>
         </header>
 
         {/* CONTENT */}
@@ -240,7 +264,9 @@ const Layout: React.FC = () => {
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" /> 
               {t("online")} | {profile?.role?.toUpperCase()}
             </span>
-            <span className="truncate">{t("hospitalAbbr")}: {profile?.hospitalId?.slice(-8).toUpperCase()}</span>
+            <span className="truncate">
+              {t("hospitalAbbr")}: {profile?.hospitalId ? profile.hospitalId.slice(-8).toUpperCase() : "ROOT"}
+            </span>
           </div>
           <div className="flex gap-4 shrink-0">
             <span className="hidden md:inline">HIPAA | GDPR | HDS</span>

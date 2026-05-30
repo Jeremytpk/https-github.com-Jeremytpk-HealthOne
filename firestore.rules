@@ -18,7 +18,7 @@ service cloud.firestore {
        return getRole() == role;
     }
     function isSystemAdmin() {
-      return hasRole('SYSTEM_ADMIN');
+      return hasRole('SYSTEM_ADMIN') || hasRole('SUP_ADMIN');
     }
     function sameHospital(hospitalId) {
       return isSignedIn() && getUser(request.auth.uid).hospitalId == hospitalId;
@@ -62,6 +62,14 @@ service cloud.firestore {
     }
     
     match /payments/{id} {
+        allow read, write: if isSignedIn();
+    }
+
+    match /healthone/{id} {
+        allow read, write: if isSignedIn();
+    }
+
+    match /healthone_hospitals/{id} {
         allow read, write: if isSignedIn();
     }
   }

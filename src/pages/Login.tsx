@@ -5,6 +5,8 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Activity, ArrowRight, Globe } from "lucide-react";
+import LoadingPage from "../components/LoadingPage";
+import { getNormalizedRole } from "../lib/utils";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -14,12 +16,12 @@ export default function Login() {
   const { user, profile, loading, signInWithUsername, logout } = useAuth();
   const { t, language, setLanguage } = useLanguage();
 
-  if (loading) return null;
+  if (loading) return <LoadingPage />;
   
   if (user && profile) {
     // If logging in through admin view, ensure user has an admin role
-    const userRole = profile.role?.toUpperCase();
-    const isAuthorizedAdmin = userRole === 'SYSTEM_ADMIN' || userRole === 'ADMIN';
+    const userRole = getNormalizedRole(profile.role);
+    const isAuthorizedAdmin = userRole === 'SYSTEM_ADMIN' || userRole === 'ADMIN' || userRole === 'SUP_ADMIN';
     
     if (isAdminView && !isAuthorizedAdmin) {
       // Not an admin, sign out and show error
@@ -29,7 +31,7 @@ export default function Login() {
     }
 
     // Role-based redirection after login
-    if (profile.role === 'SYSTEM_ADMIN') return <Navigate to="/system-admin" />;
+    if (userRole === 'SYSTEM_ADMIN' || userRole === 'SUP_ADMIN') return <Navigate to="/system-admin" />;
     return <Navigate to="/" />;
   }
 

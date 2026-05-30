@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs, updateDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 
 interface AuthContextType {
@@ -10,6 +10,7 @@ interface AuthContextType {
   hospitalId: string | null;
   signInWithUsername: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (updates: any) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   hospitalId: null,
   signInWithUsername: async () => {},
   logout: async () => {},
+  updateProfile: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -29,11 +31,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithUsername = async (username: string, password: string) => {
     try {
       const sanitizedUsername = username.trim();
-      console.log("LOGIN_ATTEMPT: Searching for username:", sanitizedUsername);
+      const lowerUsername = sanitizedUsername.toLowerCase();
+      console.log("LOGIN_ATTEMPT: Searching for username variants:", sanitizedUsername, lowerUsername);
       
-      // 1. Find user by username in Firestore
+      // 1. Find user by username in Firestore with case-insensitive fallback
       const usersRef = collection(db, "users");
-      const q = query(usersRef, where("username", "==", sanitizedUsername));
+      const q = query(usersRef, where("username", "in", [sanitizedUsername, lowerUsername]));
       
       let querySnapshot;
       try {
@@ -62,6 +65,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => signOut(auth);
+
+  const updateProfile = async (updates: any) => {
+    if (!user) throw new Error("No user logged in");
+    const docRef = doc(db, "users", user.uid);
+    await updateDoc(docRef, updates);
+    setProfile((prev: any) => ({ ...prev, ...updates }));
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -110,7 +120,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loading, 
       hospitalId: getHospitalId(profile),
       signInWithUsername,
-      logout
+      logout,
+      updateProfile
     }}>
       {children}
     </AuthContext.Provider>

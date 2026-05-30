@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
 import { db } from "../firebase";
+import { getNormalizedRole } from "../lib/utils";
 import { 
   collection, 
   query, 
@@ -19,7 +20,13 @@ import {
   Bed,
   CheckCircle2,
   Clock,
-  Plus
+  Plus,
+  Shield,
+  Building,
+  Database,
+  Cpu,
+  Layers,
+  Sparkles
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { 
@@ -72,7 +79,11 @@ export default function Dashboard() {
   const { profile, hospitalId } = useAuth();
   const { t } = useLanguage();
 
-  const userRole = profile?.role?.toUpperCase();
+  const userRole = getNormalizedRole(profile?.role);
+
+  if (userRole === 'SUP_ADMIN') {
+    return <SupAdminDashboard t={t} />;
+  }
 
   if (userRole === 'RECEPTIONIST' || userRole === 'REGISTER') {
     return <ReceptionistDashboard t={t} profile={profile} hospitalId={hospitalId} />;
@@ -94,9 +105,202 @@ export default function Dashboard() {
   return <AdminDashboard t={t} hospitalId={hospitalId} />;
 }
 
+const SupAdminDashboard = ({ t }: any) => {
+  const [hospitalsCount, setHospitalsCount] = useState<number>(0);
+  const [usersCount, setUsersCount] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [latestHospitals, setLatestHospitals] = useState<any[]>([]);
+
+  useEffect(() => {
+    // 1. Fetch hospitals count and list in real-time
+    const unsubscribeHospitals = onSnapshot(collection(db, "hospitals"), (snapshot) => {
+      setHospitalsCount(snapshot.size);
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLatestHospitals(list.slice(0, 5));
+      setLoading(false);
+    }, (error) => {
+      console.error("Error setting hospitals subscription on dashboard:", error);
+    });
+
+    // 2. Fetch users count in real-time
+    const unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      setUsersCount(snapshot.size);
+    }, (error) => {
+      console.error("Error setting users subscription on dashboard:", error);
+    });
+
+    return () => {
+      unsubscribeHospitals();
+      unsubscribeUsers();
+    };
+  }, []);
+
+  return (
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+      {/* Top Banner */}
+      <div className="bg-slate-900 rounded-2xl p-6 sm:p-8 text-white border border-slate-800 shadow-xl relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 w-[350px] h-[350px] bg-blue-500/10 rounded-full blur-[80px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-2">
+            <span className="px-2.5 py-1 bg-yellow-500/15 border border-yellow-500/35 text-yellow-400 rounded-full text-[9px] font-mono font-bold uppercase tracking-widest inline-flex items-center gap-1.5 mb-1">
+              <Shield className="w-3 h-3" /> ROOT PRIVILEGES ENABLED
+            </span>
+            <h1 className="text-2xl sm:text-4xl font-serif italic font-bold tracking-tight py-1">
+              Welcome to the Super Admin Control Hub
+            </h1>
+            <p className="text-xs text-slate-400 max-w-2xl">
+              From this global dashboard, you can provision active hospital tenants directly into the HealthOne secure cloud node, audit cross-tenant user roles, and monitor entire platform integrity.
+            </p>
+          </div>
+          <Link 
+            to="/system-admin"
+            className="px-6 py-3 bg-white text-slate-900 border border-slate-200 shadow hover:bg-slate-100 transition-all font-mono text-xs uppercase tracking-widest font-bold flex items-center justify-center gap-2 rounded-xl shrink-0"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-500" /> Administrative Tools
+          </Link>
+        </div>
+      </div>
+
+      {/* Stats Cards Section */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard 
+          title="ACTIVE SYSTEM TENANTS" 
+          value={loading ? "..." : hospitalsCount.toString()} 
+          icon={Building} 
+          trend="Provisioned Hospitals" 
+          variant="dark" 
+        />
+        <StatCard 
+          title="TOTAL REGISTERED USERS" 
+          value={loading ? "..." : usersCount.toString()} 
+          icon={Users} 
+          trend="Across all tenants" 
+        />
+        <StatCard 
+          title="CLOUD DATABASE NODES" 
+          value="Firestore" 
+          icon={Database} 
+          trend="Status: OPTIMAL" 
+        />
+        <StatCard 
+          title="CORE INTEGRATION CPU" 
+          value="US-EAST1" 
+          icon={Cpu} 
+          trend="No latency warnings" 
+        />
+      </div>
+
+      {/* Main Grid: Tenants Details and System Health */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* Left Side: Recent Hospital Deployments */}
+        <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden min-h-[350px]">
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <h2 className="font-bold text-xs font-mono text-slate-700 flex items-center gap-2 uppercase tracking-wider">
+               <Layers className="w-4 h-4 text-emerald-500" />
+               Recent Hospital Deployments
+            </h2>
+            <Link to="/system-admin" className="text-[10px] font-bold text-blue-600 hover:underline uppercase tracking-widest font-mono">
+              Deploy New Tenant +
+            </Link>
+          </div>
+
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="p-3 pl-4">HOSPITAL NAME</th>
+                  <th className="p-3">ADDRESS</th>
+                  <th className="p-3">CONTACT EMAIL</th>
+                  <th className="p-3 pr-4">TENANT ID</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-sans">
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-slate-400 italic">
+                      Fetching system-wide active nodes...
+                    </td>
+                  </tr>
+                ) : latestHospitals.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-slate-400 italic">
+                      No active hospitals found. Go to administrative tools to provision your first tenant.
+                    </td>
+                  </tr>
+                ) : (
+                  latestHospitals.map((h) => (
+                    <tr key={h.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-3 pl-4 font-bold text-slate-800">{h.name || "N/A"}</td>
+                      <td className="p-3 text-slate-500">{h.address || "N/A"}</td>
+                      <td className="p-3 text-slate-500 font-mono text-[11px]">{h.email || h.contactEmail || "N/A"}</td>
+                      <td className="p-3 pr-4 font-mono text-[10px] text-slate-400 uppercase tracking-tighter">#{h.id.slice(-8)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="p-3.5 bg-slate-50 text-[10px] text-slate-400 border-t border-slate-100 flex justify-between font-mono uppercase tracking-[0.05em]">
+            <span>System Status: Fully Operational</span>
+            <span>Security Rule Check: PASS</span>
+          </div>
+        </div>
+
+        {/* Right Side: Quick Management Console */}
+        <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between space-y-6">
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold font-mono text-slate-500 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-slate-400" /> SYSTEM CONSOLE
+            </h3>
+            
+            <p className="text-xs text-slate-500 leading-relaxed font-serif italic">
+              HealthOne platform is currently executing secure microservices across multiple isolated medical entities. Role propagation and token access layers are active.
+            </p>
+            
+            <div className="space-y-2.5 pt-2">
+              <Link 
+                to="/system-admin" 
+                className="w-full h-10 border border-slate-200 hover:border-slate-800 text-slate-900 rounded-lg flex items-center justify-center font-mono text-[10px] uppercase tracking-widest font-bold transition-all hover:bg-slate-50"
+              >
+                PROVISION A NEW HOSPITAL
+              </Link>
+              <Link 
+                to="/system-admin" 
+                className="w-full h-10 border border-slate-200 hover:border-slate-800 text-slate-900 rounded-lg flex items-center justify-center font-mono text-[10px] uppercase tracking-widest font-bold transition-all hover:bg-slate-50"
+              >
+                MANAGE USER ACCOUNTS &amp; ROLES
+              </Link>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 text-[9px] font-mono text-slate-400 uppercase space-y-1">
+            <div className="flex justify-between">
+              <span>Platform Node:</span>
+              <span className="font-bold text-slate-700">HEALTHONE_PROD_V4</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Licensing Schema:</span>
+              <span className="font-bold text-slate-700">ENTERPRISE_UNLIMITED</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  );
+};
+
+
 const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
+  const { language } = useLanguage();
   const [patients, setPatients] = useState<any[]>([]);
+  const [pediatricians, setPediatricians] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const userRole = getNormalizedRole(profile?.role);
+  const canAddPatient = userRole === 'REGISTER' || userRole === 'ADMIN' || userRole === 'SYSTEM_ADMIN' || userRole === 'SUP_ADMIN';
 
   useEffect(() => {
     if (!profile?.hospitalId && !profile?.hospital) {
@@ -133,7 +337,36 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    // Fetch pediatricians/doctors to show schedules to the register
+    const qStaff = query(
+      collection(db, "users"),
+      where("hospitalId", "==", hId)
+    );
+
+    const unsubscribeStaff = onSnapshot(qStaff, (snapshot) => {
+      const allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const peds = allUsers.filter((u: any) => {
+        const roleUpper = u.role?.toUpperCase() || "";
+        const roleNormalized = getNormalizedRole(u.role);
+        const deptUpper = Array.isArray(u.departments)
+          ? u.departments.map((d: any) => String(d).toUpperCase())
+          : [];
+        return (
+          roleNormalized === "DOCTOR" ||
+          roleUpper.includes("PEDIATRE") ||
+          roleUpper.includes("PEDIATRI") ||
+          deptUpper.some((d: string) => d.includes("PEDIATRE") || d.includes("PEDIATRI"))
+        );
+      });
+      setPediatricians(peds);
+    }, (error) => {
+      console.error("Staff fetch snap error:", error);
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeStaff();
+    };
   }, [hospitalId, profile]);
 
   return (
@@ -153,21 +386,38 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-6">Queue Management v4.2</p>
             
             <div className="flex flex-col md:flex-row gap-4">
-              <Link 
-                to="/patients?register=true" 
-                className="flex-1 flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                    <Plus className="w-4 h-4" />
+              {canAddPatient ? (
+                <Link 
+                  to="/patients?register=true" 
+                  className="flex-1 flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                      <Plus className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold">{t("newRegistration")}</p>
+                      <p className="text-[9px] text-slate-500 font-medium">Add walk-in patient</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-xs font-bold">{t("newRegistration")}</p>
-                    <p className="text-[9px] text-slate-500">Add walk-in patient</p>
+                  <ArrowUpRight className="w-3 h-3 text-slate-500 group-hover:text-white transition-colors" />
+                </Link>
+              ) : (
+                <div 
+                  className="flex-1 flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl transition-all opacity-55 cursor-not-allowed select-none"
+                  title="Only Register and Admin roles can register new patients"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-slate-500/10 text-slate-500 flex items-center justify-center">
+                      <Plus className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-slate-400">{t("newRegistration")}</p>
+                      <p className="text-[9px] text-slate-500 font-mono tracking-wider">AUTHORIZED ONLY</p>
+                    </div>
                   </div>
                 </div>
-                <ArrowUpRight className="w-3 h-3 text-slate-500 group-hover:text-white transition-colors" />
-              </Link>
+              )}
 
               <button className="flex-1 flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all group opacity-50 cursor-not-allowed">
                 <div className="flex items-center gap-3">
@@ -200,8 +450,8 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
           </div>
         </div>
 
-        {/* Recent Registrations Table below */}
-        <section className="col-span-1 lg:col-span-12 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[400px]">
+        {/* Recent Registrations Table layout on left (col-span-8) */}
+        <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[400px]">
           <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2">
                <Activity className="w-4 h-4 text-emerald-500" />
@@ -215,9 +465,9 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                 <tr className="text-[10px] font-bold text-slate-400 uppercase">
                   <th className="p-3 pl-4">ID</th>
                   <th className="p-3">{t("patients")}</th>
-                  <th className="p-3 hidden sm:table-cell">GENDER</th>
-                  <th className="p-3 hidden sm:table-cell">Contact</th>
-                  <th className="p-3">Age</th>
+                  <th className="p-3 hidden sm:table-cell">{t("gender").toUpperCase()}</th>
+                  <th className="p-3 hidden sm:table-cell">{t("contact")}</th>
+                  <th className="p-3">{t("age")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -233,7 +483,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                         {p.firstName} {p.lastName}
                       </Link>
                     </td>
-                    <td className="p-3 uppercase text-slate-500 hidden sm:table-cell">{t(p.gender || 'NA')}</td>
+                    <td className="p-3 uppercase text-slate-500 hidden sm:table-cell">{t(p.gender?.toUpperCase() || 'NA')}</td>
                     <td className="p-3 text-slate-500 font-mono hidden sm:table-cell">{p.phone || t("noContact")}</td>
                     <td className="p-3 font-medium">{p.age || t("NA")}</td>
                   </tr>
@@ -242,53 +492,276 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
             </table>
           </div>
         </section>
+
+        {/* Pediatrician/Doctors schedules on right (col-span-4) */}
+        <div className="col-span-1 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
+          <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2 uppercase tracking-wide">
+               <Clock className="w-4 h-4 text-blue-500" />
+               {t("pediatreAvailability") || "Pediatre Availability"}
+            </h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+            {pediatricians.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 italic text-xs py-8">
+                <Users className="w-8 h-8 opacity-20 mb-2" />
+                No pediatricians found
+              </div>
+            ) : (
+              pediatricians.map((ped) => {
+                const docSchedule = ped.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                return (
+                  <div key={ped.id} className="p-3 border border-slate-100 rounded-xl hover:border-slate-200 hover:shadow-sm transition-all bg-slate-50/30">
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-xs text-slate-800 truncate">{ped.fullName || ped.name}</h4>
+                        <p className="text-[9px] font-mono opacity-50 uppercase tracking-widest mt-0.5 truncate">
+                          {ped.departments?.join(', ') || 'Pediatrician'}
+                        </p>
+                      </div>
+                      <span className="text-[8px] px-2 py-0.5 border bg-blue-50 text-blue-700 border-blue-100 rounded-full font-bold shrink-0 uppercase tracking-wide">
+                        {ped.status || 'ACTIVE'}
+                      </span>
+                    </div>
+
+                    <div className="mt-3">
+                      <p className="text-[9px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">{t("workingDays") || "Working Days"}:</p>
+                      <div className="flex items-center gap-1.5">
+                        {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => {
+                          const isActive = docSchedule.includes(day);
+                          const letter = language === 'fr' ? weekdayShortFr[day] : weekdayShortEn[day];
+                          return (
+                            <span
+                              key={day}
+                              title={language === 'fr' ? weekdayDisplayFr[day] : day}
+                              className={`w-6 h-6 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 transition-opacity ${
+                                isActive 
+                                  ? 'bg-emerald-500 text-white font-black shadow-sm' 
+                                  : 'bg-slate-100 text-slate-300'
+                              }`}
+                            >
+                              {letter}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 };
 
-const DoctorDashboard = ({ t }: any) => (
-  <div className="space-y-4">
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <StatCard title={t("activeConsultations")} value="04" icon={Users} trend="Current Shift" variant="dark" />
-      <StatCard title={t("pendingLabResults")} value="12" icon={Activity} trend="Critical: 02" />
-      <StatCard title={t("surgeriesToday")} value="02" icon={Bed} trend="OR-1 Scheduled" />
-      <StatCard title={t("avgConsultTime")} value="18m" icon={Clock} trend="Within standard" />
-    </div>
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:h-[500px]">
-       <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[300px] lg:h-full">
-          <div className="p-3 border-b border-slate-100 bg-slate-50/50 font-bold text-xs">{t("myPatientQueue")}</div>
-          <div className="p-0 overflow-auto">
-             <table className="w-full text-left text-xs min-w-[500px] lg:min-w-0">
-                <thead className="bg-slate-50 border-b border-slate-100">
-                   <tr className="text-[10px] text-slate-400 uppercase">
-                      <th className="p-3 pl-4">{t("patients")}</th>
-                      <th className="p-3">{t("reason")}</th>
-                      <th className="p-3">{t("vitalsStatus")}</th>
-                      <th className="p-3 text-right pr-4">{t("action")}</th>
-                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                   <tr>
-                      <td className="p-3 pl-4 font-bold">Marc Dupont</td>
-                      <td className="p-3 text-slate-500 italic">Persistent Fever (Lab Req)</td>
-                      <td className="p-3"><span className="text-emerald-500 font-bold uppercase">STABLE</span></td>
-                      <td className="p-3 text-right pr-4"><button className="px-2 py-1 bg-blue-600 text-white rounded font-bold text-[10px] uppercase">{t("openFile")}</button></td>
-                   </tr>
-                </tbody>
-             </table>
+const weekdayShortEn: Record<string, string> = {
+  Monday: 'M',
+  Tuesday: 'T',
+  Wednesday: 'W',
+  Thursday: 'T',
+  Friday: 'F',
+  Saturday: 'S',
+  Sunday: 'S'
+};
+
+const weekdayShortFr: Record<string, string> = {
+  Monday: 'L',
+  Tuesday: 'M',
+  Wednesday: 'M',
+  Thursday: 'J',
+  Friday: 'V',
+  Saturday: 'S',
+  Sunday: 'D'
+};
+
+const weekdayDisplayFr: Record<string, string> = {
+  Monday: 'Lundi',
+  Tuesday: 'Mardi',
+  Wednesday: 'Mercredi',
+  Thursday: 'Jeudi',
+  Friday: 'Vendredi',
+  Saturday: 'Samedi',
+  Sunday: 'Dimanche'
+};
+
+const DoctorDashboard = ({ t, hospitalId }: any) => {
+  const { profile, updateProfile } = useAuth();
+  const { language } = useLanguage();
+  const [patients, setPatients] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [schedule, setSchedule] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (profile?.schedule) {
+      setSchedule(profile.schedule);
+    } else {
+      setSchedule(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']);
+    }
+  }, [profile?.schedule]);
+
+  const toggleDay = async (day: string) => {
+    let updatedSchedule = [...schedule];
+    if (updatedSchedule.includes(day)) {
+      updatedSchedule = updatedSchedule.filter(d => d !== day);
+    } else {
+      updatedSchedule.push(day);
+    }
+    setSchedule(updatedSchedule);
+    try {
+      await updateProfile({ schedule: updatedSchedule });
+    } catch (err) {
+      console.error("Failed to update pediatrician schedule:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (!hospitalId) {
+      setLoading(false);
+      return;
+    }
+
+    const q = query(
+      collection(db, "patients"),
+      where("hospitalId", "==", hospitalId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const patientData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      patientData.sort((a: any, b: any) => {
+        const dateA = a.createdAt?.seconds || 0;
+        const dateB = b.createdAt?.seconds || 0;
+        return dateB - dateA;
+      });
+      setPatients(patientData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Doctor Dashboard Snap Error:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [hospitalId]);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard title={t("activeConsultations")} value={patients.length > 0 ? `0${patients.length}`.slice(-2) : "00"} icon={Users} trend="Current Shift" variant="dark" />
+        <StatCard title={t("pendingLabResults")} value="12" icon={Activity} trend="Critical: 02" />
+        
+        {/* Interactive Pediatre Availability Card replacing Chirurgies Aujourd'hui */}
+        <div className="p-4 rounded-xl border flex flex-col justify-between shadow-sm relative overflow-hidden h-28 bg-white border-slate-200 text-slate-900 group">
+          <div className="flex flex-col gap-1 w-full">
+            <p className="text-[10px] uppercase font-bold tracking-wider text-slate-500">
+              {t("pediatreAvailability") || "Availability Schedule"}
+            </p>
+            <div className="flex items-center justify-between gap-1 mt-1">
+              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => {
+                const isSelected = schedule.includes(day);
+                const shortLabel = language === 'fr' 
+                  ? weekdayShortFr[day] 
+                  : weekdayShortEn[day];
+                return (
+                  <button
+                    key={day}
+                    onClick={() => toggleDay(day)}
+                    title={language === 'fr' ? weekdayDisplayFr[day] : day}
+                    className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center transition-all cursor-pointer ${
+                      isSelected 
+                        ? 'bg-blue-600 text-white shadow-sm font-black' 
+                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                    }`}
+                  >
+                    {shortLabel}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-       </section>
-       <div className="col-span-1 lg:col-span-4 bg-blue-900 rounded-xl p-4 text-white">
-          <h4 className="text-[10px] font-bold uppercase tracking-widest text-blue-300">{t("medBotAssistant")}</h4>
-          <p className="text-xs mt-2 italic text-blue-100/70">"You have 2 pathology reports awaiting review from the morning rounds."</p>
-          <div className="mt-4 pt-4 border-t border-blue-800">
-             <button className="text-[10px] font-bold underline uppercase">{t("reviewLabs")}</button>
-          </div>
-       </div>
+          <p className="text-[9px] font-medium text-emerald-600/90 tracking-tight mt-1 truncate">
+            {schedule.length > 0 
+              ? `${t("activeDays") || "Active"}: ${schedule.map(d => language === 'fr' ? weekdayShortFr[d].toUpperCase() : weekdayShortEn[d].toUpperCase()).join(', ')}`
+              : t("noDaysSelected") || "No days selected"
+            }
+          </p>
+        </div>
+
+        <StatCard title={t("avgConsultTime")} value="18m" icon={Clock} trend="Within standard" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:h-[500px]">
+         <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[300px] lg:h-full">
+            <div className="p-3 border-b border-slate-100 bg-slate-50/50 font-bold text-xs flex items-center justify-between">
+               <span>{t("myPatientQueue")}</span>
+               <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{patients.length}</span>
+            </div>
+            <div className="p-0 overflow-auto flex-1">
+               <table className="w-full text-left text-xs min-w-[500px] lg:min-w-0">
+                  <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 font-bold z-10">
+                     <tr className="text-[10px] text-slate-400 uppercase">
+                        <th className="p-3 pl-4">{t("patients")}</th>
+                        <th className="p-3">{t("gender")}</th>
+                        <th className="p-3">{t("age")}</th>
+                        <th className="p-3 text-right pr-4">{t("action")}</th>
+                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                     {loading ? (
+                       <tr>
+                         <td colSpan={4} className="p-8 text-center text-slate-400 italic font-medium">
+                           {t("syncingRecords") || "Loading..."}
+                         </td>
+                       </tr>
+                     ) : patients.length === 0 ? (
+                       <tr>
+                         <td colSpan={4} className="p-8 text-center text-slate-400 italic">
+                           {t("noPatientsRegistered") || "No patients found in your queue."}
+                         </td>
+                       </tr>
+                     ) : (
+                       patients.map((p) => (
+                         <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3 pl-4 font-bold text-slate-800">
+                              {p.firstName} {p.lastName}
+                            </td>
+                            <td className="p-3 uppercase text-slate-500 font-mono">
+                              {t(p.gender?.toUpperCase() || "NA")}
+                            </td>
+                            <td className="p-3 text-slate-600 font-mono">
+                              {p.age || t("NA")}
+                            </td>
+                            <td className="p-3 text-right pr-4">
+                              <Link 
+                                to={`/patients/${p.id}`} 
+                                className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-[10px] uppercase transition-colors inline-block"
+                              >
+                                {t("openFile") || "Open File"}
+                              </Link>
+                            </td>
+                         </tr>
+                       ))
+                     )}
+                  </tbody>
+               </table>
+            </div>
+         </section>
+         <div className="col-span-1 lg:col-span-4 bg-blue-900 rounded-xl p-4 text-white flex flex-col justify-between">
+            <div>
+              <h4 className="text-[10px] font-bold uppercase tracking-widest text-blue-300">{t("medBotAssistant")}</h4>
+              <p className="text-xs mt-3 italic text-blue-100/70 leading-relaxed">{t("pathoPending") || "Clinical insight logs and lab integration dashboard is currently stable and connected."}</p>
+            </div>
+            <div className="mt-4 pt-4 border-t border-blue-800">
+               <button className="text-[10px] font-bold underline uppercase tracking-wider text-blue-200 hover:text-white transition-colors">{t("reviewLabs") || "Review Labs"}</button>
+            </div>
+         </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const PharmacistDashboard = ({ t }: any) => (
   <div className="space-y-4">
@@ -405,24 +878,24 @@ const AdminDashboard = ({ t }: any) => (
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {[
-                { id: "772-019", name: "Sarah Connor", stage: "Triage Phase", dr: "Dr. Adams", wait: "12 min", status: "In Progress", color: "bg-emerald-500" },
-                { id: "881-224", name: "Marc Dupont", stage: "Lab Analysis", dr: "Dr. LeClerc", wait: "45 min", status: "Awaiting Result", color: "bg-slate-300" },
-                { id: "440-101", name: "Jean-Luc Picard", stage: "Observation", dr: "Dr. Beverly", wait: "2h 15m", status: "Stabilized", color: "bg-emerald-500" },
-                { id: "992-414", name: "Alice Smith", stage: "Pharmacy Queue", dr: "N/A", wait: "5 min", status: "Dispatching", color: "bg-blue-500" },
-                { id: "551-092", name: "Robert Barath", stage: "Surgery Prep", dr: "Dr. Stark", wait: "1h 10m", status: "Pre-Op", color: "bg-amber-400" },
-                { id: "123-456", name: "Ellen Ripley", stage: "Discharge", dr: "Dr. Ash", wait: "N/A", status: "Ready", color: "bg-emerald-500" },
+             {[
+                { id: "772-019", name: "Sarah Connor", stageKey: "triagePhase", dr: "Dr. Adams", wait: "12 min", statusKey: "inProgress", color: "bg-emerald-500" },
+                { id: "881-224", name: "Marc Dupont", stageKey: "labAnalysis", dr: "Dr. LeClerc", wait: "45 min", statusKey: "awaitingResult", color: "bg-slate-300" },
+                { id: "440-101", name: "Jean-Luc Picard", stageKey: "observation", dr: "Dr. Beverly", wait: "2h 15m", statusKey: "stabilized", color: "bg-emerald-500" },
+                { id: "992-414", name: "Alice Smith", stageKey: "pharmacyQueue", dr: "N/A", wait: "5 min", statusKey: "dispatching", color: "bg-blue-500" },
+                { id: "551-092", name: "Robert Barath", stageKey: "surgeryPrep", dr: "Dr. Stark", wait: "1h 10m", statusKey: "preOp", color: "bg-amber-400" },
+                { id: "123-456", name: "Ellen Ripley", stageKey: "discharge", dr: "Dr. Ash", wait: "N/A", statusKey: "ready", color: "bg-emerald-500" },
               ].map((p) => (
                 <tr key={p.id} className="hover:bg-blue-50/30 transition-colors group text-xs">
                   <td className="p-3 pl-4 font-mono text-slate-400">#{p.id}</td>
                   <td className="p-3 font-bold text-blue-600 group-hover:underline cursor-pointer">{p.name}</td>
-                  <td className="p-3 text-slate-600 italic">{p.stage}</td>
+                  <td className="p-3 text-slate-600 italic">{t(p.stageKey)}</td>
                   <td className="p-3 hidden sm:table-cell">{p.dr}</td>
-                  <td className="p-3 text-slate-400 font-mono">{p.wait}</td>
+                  <td className="p-3 text-slate-400 font-mono">{p.wait === "N/A" ? t("NA") : p.wait}</td>
                   <td className="p-3 pr-4">
                     <span className="flex items-center gap-2 font-medium">
                       <div className={`w-1.5 h-1.5 rounded-full ${p.color}`} />
-                      {p.status}
+                      {t(p.statusKey)}
                     </span>
                   </td>
                 </tr>
@@ -472,18 +945,18 @@ const AdminDashboard = ({ t }: any) => (
             <h2 className="font-bold text-[10px] uppercase tracking-wider text-slate-500 uppercase">{t("criticalInventory")}</h2>
           </div>
           <div className="p-3 overflow-y-auto space-y-2">
-            {[
-              { name: "MRI Scanner #1", status: "Available", color: "bg-emerald-100 text-emerald-700" },
-              { name: "Amoxicillin 500mg", status: "Low Stock: 14u", color: "bg-rose-100 text-rose-700" },
-              { name: "Ventilator B-12", status: "Maintenance", color: "bg-amber-100 text-amber-700" },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center justify-between border-b border-slate-50 pb-1.5 last:border-0">
-                <span className="text-[10px] font-medium text-slate-700">{item.name}</span>
-                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase ${item.color}`}>
-                  {item.status}
-                </span>
-              </div>
-            ))}
+             {[
+               { name: "MRI Scanner #1", statusKey: "available", color: "bg-emerald-100 text-emerald-700" },
+               { name: "Amoxicillin 500mg", statusKey: "lowStock", quantity: 14, color: "bg-rose-100 text-rose-700" },
+               { name: "Ventilator B-12", statusKey: "maintenance", color: "bg-amber-100 text-amber-700" },
+             ].map((item, i) => (
+               <div key={i} className="flex items-center justify-between border-b border-slate-50 pb-1.5 last:border-0">
+                 <span className="text-[10px] font-medium text-slate-700">{item.name}</span>
+                 <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase ${item.color}`}>
+                   {item.statusKey === "lowStock" ? t("lowStock").replace("{quantity}", String(item.quantity)) : t(item.statusKey)}
+                 </span>
+               </div>
+             ))}
           </div>
         </section>
       </div>

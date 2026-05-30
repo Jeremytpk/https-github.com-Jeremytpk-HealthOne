@@ -24,9 +24,39 @@ import {
 } from "lucide-react";
 import { UserRole, UserStatus } from "../lib/utils";
 
+const weekdayShortEn: Record<string, string> = {
+  Monday: 'M',
+  Tuesday: 'T',
+  Wednesday: 'W',
+  Thursday: 'T',
+  Friday: 'F',
+  Saturday: 'S',
+  Sunday: 'S'
+};
+
+const weekdayShortFr: Record<string, string> = {
+  Monday: 'L',
+  Tuesday: 'M',
+  Wednesday: 'M',
+  Thursday: 'J',
+  Friday: 'V',
+  Saturday: 'S',
+  Sunday: 'D'
+};
+
+const weekdayDisplayFr: Record<string, string> = {
+  Monday: 'Lundi',
+  Tuesday: 'Mardi',
+  Wednesday: 'Mercredi',
+  Thursday: 'Jeudi',
+  Friday: 'Vendredi',
+  Saturday: 'Samedi',
+  Sunday: 'Dimanche'
+};
+
 export default function StaffManagement() {
   const { hospitalId, profile } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -57,6 +87,21 @@ export default function StaffManagement() {
       fetchStaff();
     } catch (error) {
       console.error("Error updating status:", error);
+    }
+  };
+
+  const handleToggleStaffDay = async (staffId: string, currentSchedule: string[], day: string) => {
+    let updated = Array.isArray(currentSchedule) ? [...currentSchedule] : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    if (updated.includes(day)) {
+      updated = updated.filter(d => d !== day);
+    } else {
+      updated.push(day);
+    }
+    try {
+      await updateDoc(doc(db, "users", staffId), { schedule: updated });
+      fetchStaff();
+    } catch (error) {
+      console.error("Error updating staff schedule:", error);
     }
   };
 
@@ -128,10 +173,34 @@ export default function StaffManagement() {
               </span>
             </div>
 
-            <div className="space-y-2 mb-8">
-               <div className="flex items-center gap-2 text-xs font-mono opacity-60">
-                 <Clock className="w-3 h-3" /> {t("shiftMonFri")}
-               </div>
+            <div className="space-y-3 mb-6">
+              <div className="flex items-center gap-2 text-xs font-mono opacity-80 uppercase tracking-wider font-bold">
+                <Clock className="w-3.5 h-3.5 text-slate-400" /> {t("schedules") || "Schedule Availability"}
+              </div>
+              <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => {
+                  const staffSch = s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                  const isSelected = staffSch.includes(day);
+                  const letter = language === 'fr' ? weekdayShortFr[day] : weekdayShortEn[day];
+                  return (
+                    <button
+                      key={day}
+                      onClick={() => handleToggleStaffDay(s.id, staffSch, day)}
+                      title={language === 'fr' ? weekdayDisplayFr[day] : day}
+                      className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'bg-emerald-600 text-white font-black shadow-sm hover:bg-emerald-700' 
+                          : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                      }`}
+                    >
+                      {letter}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[9px] text-slate-400 italic">
+                {language === 'fr' ? "Cliquez sur les jours pour modifier" : "Click days to edit schedule"}
+              </p>
             </div>
 
             <div className="flex items-center gap-1 border-t border-app-line pt-4">
@@ -209,6 +278,8 @@ export default function StaffManagement() {
                   <option value="CASHIER">{t("cashier")}</option>
                   <option value="HR">{t("hr")}</option>
                   <option value="ADMIN">{t("admin")}</option>
+                  <option value="PHARMACIE">{t("pharmacie")}</option>
+                  <option value="INVENTAIRE">{t("inventaire")}</option>
                 </select>
               </div>
 

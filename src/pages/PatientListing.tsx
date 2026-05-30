@@ -14,6 +14,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Search, UserPlus, ArrowRight, User } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { getNormalizedRole } from "../lib/utils";
 
 export default function PatientListing() {
   const { hospitalId, profile } = useAuth();
@@ -25,15 +26,18 @@ export default function PatientListing() {
   const [loading, setLoading] = useState(true);
   const [showRegModal, setShowRegModal] = useState(false);
 
+  const userRole = getNormalizedRole(profile?.role);
+  const canAddPatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+
   useEffect(() => {
     const querySearch = searchParams.get("search");
     if (querySearch) {
       setSearchTerm(querySearch);
     }
-    if (searchParams.get("register") === "true") {
+    if (searchParams.get("register") === "true" && canAddPatient) {
       setShowRegModal(true);
     }
-  }, [searchParams]);
+  }, [searchParams, canAddPatient]);
   
   // Registration Form
   const [formData, setFormData] = useState({
@@ -84,6 +88,12 @@ export default function PatientListing() {
     setFormError(null);
     setIsSubmitting(true);
     
+    if (!canAddPatient) {
+      setFormError("UNAUTHORIZED: Only Registrar and Admin roles can register new patients.");
+      setIsSubmitting(false);
+      return;
+    }
+    
     if (!hospitalId) {
       console.error("REGISTRATION_BLOCKED: No hospitalId found in context/profile");
       setFormError("SYSTEM_ERROR: No assigned hospital found for this account. Please contact an admin.");
@@ -133,13 +143,15 @@ export default function PatientListing() {
             {t("managingRecords").replace("{count}", patients.length.toString())}
           </p>
         </div>
-        <button 
-          onClick={() => setShowRegModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 w-full sm:w-auto"
-        >
-          <UserPlus className="w-4 h-4" />
-          {t("registerPatient")}
-        </button>
+        {canAddPatient && (
+          <button 
+            onClick={() => setShowRegModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 w-full sm:w-auto"
+          >
+            <UserPlus className="w-4 h-4" />
+            {t("registerPatient")}
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
