@@ -305,6 +305,8 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
   const { language } = useLanguage();
   const [patients, setPatients] = useState<any[]>([]);
   const [pediatricians, setPediatricians] = useState<any[]>([]);
+  const [allStaff, setAllStaff] = useState<any[]>([]);
+  const [showAllStaff, setShowAllStaff] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewingPedSchedule, setViewingPedSchedule] = useState<any | null>(null);
 
@@ -381,14 +383,27 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
     });
 
     // Fetch pediatricians/doctors to show schedules to the register
-    const qStaff = query(
-      collection(db, "users"),
-      where("hospitalId", "==", hId)
-    );
+    // Query full users collection and resolve hospital ID dynamically to guarantee matches across schemas (e.g., hospital vs hospitalId)
+    const unsubscribeStaff = onSnapshot(collection(db, "users"), (snapshot) => {
+      const allUsers = snapshot.docs.map(doc => {
+        const uData = doc.data();
+        const uId = doc.id;
+        let resolvedHopId = uData.hospitalId || null;
+        if (!resolvedHopId && uData.hospital) {
+          if (typeof uData.hospital === 'string') {
+            resolvedHopId = uData.hospital;
+          } else if (typeof uData.hospital === 'object' && uData.hospital.id) {
+            resolvedHopId = uData.hospital.id;
+          }
+        }
+        return { id: uId, ...uData, resolvedHospitalId: resolvedHopId };
+      });
 
-    const unsubscribeStaff = onSnapshot(qStaff, (snapshot) => {
-      const allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const peds = allUsers.filter((u: any) => {
+      // Filter to same hospital
+      const filteredStaff = allUsers.filter((u: any) => u.resolvedHospitalId === hId);
+      setAllStaff(filteredStaff);
+
+      const peds = filteredStaff.filter((u: any) => {
         const roleUpper = u.role?.toUpperCase() || "";
         const roleNormalized = getNormalizedRole(u.role);
         const deptUpper = Array.isArray(u.departments)
@@ -411,6 +426,8 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
       unsubscribeStaff();
     };
   }, [hospitalId, profile]);
+
+  const displayList = showAllStaff ? allStaff : pediatricians;
 
   return (
     <div className="space-y-4">
@@ -560,20 +577,50 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
 
         {/* Pediatrician/Doctors schedules on right (col-span-4) */}
         <div className="col-span-1 lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[520px]">
-          <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2 uppercase tracking-wide">
-               <Clock className="w-4 h-4 text-blue-500" />
-               {t("pediatreAvailability") || "Pediatre Availability"}
+          <div className="p-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/50">
+            <h2 className="font-bold text-xs text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+               <Clock className="w-4 h-4 text-blue-500 shrink-0" />
+               <span className="truncate">
+                 {showAllStaff 
+                   ? (language === 'fr' ? "Tout le personnel" : "All Staff Schedules") 
+                   : (language === 'fr' ? "Dispo Pédiatres" : "Pediatre Availability")}
+               </span>
             </h2>
+            <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowAllStaff(false)}
+                className={`px-2 py-1 text-[9px] font-mono font-bold uppercase rounded transition-all cursor-pointer ${
+                  !showAllStaff 
+                    ? 'bg-white text-blue-700 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {language === 'fr' ? "Pédiatres" : "Pediatricians"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAllStaff(true)}
+                className={`px-2 py-1 text-[9px] font-mono font-bold uppercase rounded transition-all cursor-pointer ${
+                  showAllStaff 
+                    ? 'bg-white text-blue-700 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {language === 'fr' ? "Tout" : "All"}
+              </button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-            {pediatricians.length === 0 ? (
+            {displayList.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 italic text-xs py-8">
                 <Users className="w-8 h-8 opacity-20 mb-2" />
-                No pediatricians found
+                {showAllStaff 
+                  ? (language === 'fr' ? "Aucun personnel trouvé" : "No staff found")
+                  : (language === 'fr' ? "Aucun pédiatre trouvé" : "No pediatricians found")}
               </div>
             ) : (
-              pediatricians.map((ped) => {
+              displayList.map((ped) => {
                 const docSchedule = ped.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
                 return (
                   <div key={ped.id} className="p-3 border border-slate-100 rounded-xl hover:border-slate-200 hover:shadow-sm transition-all bg-slate-50/30">
@@ -581,7 +628,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                       <div className="min-w-0">
                         <h4 className="font-bold text-xs text-slate-800 truncate">{ped.fullName || ped.name}</h4>
                         <p className="text-[9px] font-mono opacity-50 uppercase tracking-widest mt-0.5 truncate">
-                          {ped.departments?.join(', ') || 'Pediatrician'}
+                          {ped.departments?.join(', ') || ped.role || (language === 'fr' ? "Personnel" : "Staff Member")}
                         </p>
                       </div>
                       <span className="text-[8px] px-2 py-0.5 border bg-blue-50 text-blue-700 border-blue-100 rounded-full font-bold shrink-0 uppercase tracking-wide">
@@ -611,7 +658,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                               schedule: newSchedule
                             });
                           } catch (err) {
-                            console.error("Failed to update pediatrician schedule:", err);
+                            console.error("Failed to update staff schedule:", err);
                           }
                         }}
                       />
@@ -630,8 +677,8 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
           onClose={() => setViewingPedSchedule(null)}
           schedule={viewingPedSchedule.schedule || []}
           onSaveSchedule={handleSavePedSchedule}
-          name={viewingPedSchedule.fullName || viewingPedSchedule.name || "Pediatrician"}
-          role={language === 'fr' ? "Pédiatre" : "Pediatrician"}
+          name={viewingPedSchedule.fullName || viewingPedSchedule.name || (language === 'fr' ? "Prénom Nom" : "Staff Member")}
+          role={viewingPedSchedule.departments?.join(', ') || viewingPedSchedule.role || (language === 'fr' ? "Personnel" : "Staff Member")}
         />
       )}
 
