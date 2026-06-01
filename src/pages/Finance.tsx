@@ -11,6 +11,7 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useOfflineSync } from "../contexts/OfflineSyncContext";
 import { 
   Wallet, 
   Search, 
@@ -26,6 +27,7 @@ import { format } from "date-fns";
 export default function Finance() {
   const { hospitalId, profile } = useAuth();
   const { t, language } = useLanguage();
+  const { isOfflineMode, addOfflineDoc, getQueuedItemsForCollection } = useOfflineSync();
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -45,17 +47,17 @@ export default function Finance() {
 
   const fetchPayments = async () => {
     setLoading(true);
-    const q = query(
-      collection(db, "payments"), 
-      where("hospitalId", "==", hospitalId)
-    );
-    const querySnapshot = await getDocs(q);
-    const fetchedPayments = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    fetchedPayments.sort((a: any, b: any) => {
-      const getMillis = (t: any) => t && typeof t.toMillis === 'function' ? t.toMillis() : (t?.seconds ? t.seconds * 1000 : 0);
-      return getMillis(b.createdAt) - getMillis(a.createdAt);
-    });
-    setPayments(fetchedPayments);
+    try {
+      const q = query(
+        collection(db, "payments"), 
+        where("hospitalId", "==", hospitalId)
+      );
+      const querySnapshot = await getDocs(q);
+      const fetchedPayments = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPayments(fetchedPayments);
+    } catch (e) {
+      console.error("Failed to fetch payments online:", e);
+    }
     setLoading(false);
   };
 
@@ -64,14 +66,24 @@ export default function Finance() {
     if (!hospitalId) return;
 
     try {
-      await addDoc(collection(db, "payments"), {
+      const paymentPayload = {
         ...formData,
         amount: Number(formData.amount),
         hospitalId,
-        cashierId: profile?.id,
-        cashierName: profile?.name,
-        createdAt: serverTimestamp()
-      });
+        cashierId: profile?.id || "unknown",
+        cashierName: profile?.fullName || profile?.name || "Staff",
+        createdAt: isOfflineMode ? new Date().toISOString() : serverTimestamp()
+      };
+
+      if (isOfflineMode) {
+        await addOfflineDoc(
+          "payments", 
+          paymentPayload, 
+          `Payment: $${formData.amount} for ${formData.patientName}`
+        );
+      } else {
+        await addDoc(collection(db, "payments"), paymentPayload);
+      }
       setShowAddModal(false);
       setFormData({ patientId: "", patientName: "", amount: "", method: "CASH", status: "PAID", reference: "" });
       fetchPayments();
@@ -80,7 +92,36 @@ export default function Finance() {
     }
   };
 
-  const totalRevenue = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const offlinePayments = getQueuedItemsForCollection("payments")
+    .filter((item: any) => item.data.hospitalId === hospitalId)
+    .map((item: any) => ({ id: item.id, ...item.data }));
+
+  const mergedPayments = [...offlinePayments, ...payments];
+
+  mergedPayments.sort((a: any, b: any) => {
+    const getMillis = (t: any) => {
+      if (!t) return 0;
+      if (typeof t.toMillis === 'function') return t.toMillis();
+      if (t.seconds) return t.seconds * 1000;
+      try { return new Date(t).getTime(); } catch {}
+      return 0;
+    };
+    return getMillis(b.createdAt) - getMillis(a.createdAt);
+  });
+
+  const getFormatDate = (createdAt: any) => {
+    if (!createdAt) return t("justNow") || 'JUST_NOW';
+    try {
+      if (typeof createdAt.toDate === 'function') {
+        return format(createdAt.toDate(), language === 'fr' ? 'dd/MM, HH:mm' : 'MMM dd, HH:mm');
+      }
+      return format(new Date(createdAt), language === 'fr' ? 'dd/MM, HH:mm' : 'MMM dd, HH:mm');
+    } catch (e) {
+      return t("justNow") || 'JUST_NOW';
+    }
+  };
+
+  const totalRevenue = mergedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -118,22 +159,29 @@ export default function Finance() {
 
         {loading ? (
           <div className="p-12 text-center animate-pulse font-mono text-xs opacity-50 uppercase tracking-widest">{t("fetchingLogs")}</div>
-        ) : payments.length === 0 ? (
+        ) : mergedPayments.length === 0 ? (
           <div className="p-12 text-center font-mono text-xs opacity-50 uppercase tracking-widest">{t("noTransactions")}</div>
         ) : (
           <div className="divide-y divide-app-line">
-            {payments.map((p) => (
+            {mergedPayments.map((p) => (
               <div key={p.id} className="grid grid-cols-[1fr_120px] sm:grid-cols-[1fr_1.5fr_1fr_120px] lg:grid-cols-[1fr_1.5fr_1fr_1fr_120px] p-3 sm:p-4 items-center hover:bg-gray-50 transition-colors group">
                 <span className="text-[10px] font-mono opacity-50 hidden sm:block">
-                  {p.createdAt ? format(p.createdAt.toDate(), language === 'fr' ? 'dd/MM, HH:mm' : 'MMM dd, HH:mm') : (t("justNow") || 'JUST_NOW')}
+                  {getFormatDate(p.createdAt)}
                 </span>
                 <div className="flex flex-col pr-2">
-                  <span className="font-bold text-xs sm:text-sm truncate">{p.patientName}</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-bold text-xs sm:text-sm truncate">{p.patientName}</span>
+                    {p.isOfflinePending && (
+                      <span className="bg-amber-100 text-amber-800 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse whitespace-nowrap">
+                        Offline
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[9px] font-mono opacity-40 uppercase truncate">REF: {p.reference || 'N/A'}</span>
                 </div>
                 <div className="hidden lg:flex items-center gap-2 text-xs font-mono opacity-70">
                    {p.method === 'CASH' ? <Banknote className="w-3 h-3" /> : <CreditCard className="w-3 h-3" />}
-                   {t(p.method.toLowerCase())}
+                   {t(p.method?.toLowerCase() || 'cash')}
                 </div>
                 <div className="flex flex-col sm:block">
                   <span className="font-mono font-bold text-sm text-emerald-600 sm:text-slate-900">${Number(p.amount).toLocaleString()}</span>
@@ -141,7 +189,7 @@ export default function Finance() {
                 </div>
                 <div className="flex justify-end">
                    <span className="text-[8px] sm:text-[9px] px-1.5 sm:px-2 py-0.5 border border-green-200 bg-green-50 text-green-700 font-mono uppercase tracking-widest truncate">
-                     {t(p.status)}
+                     {t(p.status || 'PAID')}
                    </span>
                 </div>
               </div>

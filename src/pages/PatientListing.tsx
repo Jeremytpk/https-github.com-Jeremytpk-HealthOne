@@ -14,13 +14,15 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
-import { Search, UserPlus, ArrowRight, User, Trash2, AlertCircle } from "lucide-react";
+import { useOfflineSync } from "../contexts/OfflineSyncContext";
+import { Search, UserPlus, ArrowRight, User, Trash2, AlertCircle, RefreshCw } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getNormalizedRole } from "../lib/utils";
 
 export default function PatientListing() {
   const { hospitalId, profile } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { isOfflineMode, addOfflineDoc, getQueuedItemsForCollection } = useOfflineSync();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
@@ -125,33 +127,52 @@ export default function PatientListing() {
     }
 
     try {
-      console.log("PROCEEDING_WITH_ADD_DOC", { hospitalId });
+      console.log("PROCEEDING_WITH_ADD_DOC", { hospitalId, isOfflineMode });
       // Basic age calculation
       const birthDate = new Date(formData.dateOfBirth);
       const age = new Date().getFullYear() - birthDate.getFullYear();
 
-      const docRef = await addDoc(collection(db, "patients"), {
+      const patientPayload = {
         ...formData,
         age,
         hospitalId: hospitalId,
         status: "Registered",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        createdAt: isOfflineMode ? new Date().toISOString() : serverTimestamp(),
+        updatedAt: isOfflineMode ? new Date().toISOString() : serverTimestamp(),
         registeredBy: profile?.id || "unknown"
-      });
+      };
+
+      let docId = "";
+      if (isOfflineMode) {
+        const res = await addOfflineDoc(
+          "patients", 
+          patientPayload, 
+          `Patient: ${formData.firstName} ${formData.lastName}`
+        );
+        docId = res.id;
+      } else {
+        const docRef = await addDoc(collection(db, "patients"), patientPayload);
+        docId = docRef.id;
+      }
       
-      console.log("SUCCESSFUL_REGISTRATION:", docRef.id);
+      console.log("SUCCESSFUL_REGISTRATION:", docId);
       setShowRegModal(false);
-      navigate(`/patients/${docRef.id}`);
+      navigate(`/patients/${docId}`);
     } catch (error: any) {
       console.error("Error registering patient:", error);
-      setFormError(`Registration failed: ${error.message || 'Unknown error'}`);
+      setFormError(`Registration failed: ${error.message || "Unknown error"}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const filteredPatients = patients.filter(p => 
+  const offlinePatients = getQueuedItemsForCollection("patients")
+    .filter((item: any) => item.data.hospitalId === hospitalId)
+    .map((item: any) => ({ id: item.id, ...item.data }));
+
+  const mergedPatients = [...offlinePatients, ...patients];
+
+  const filteredPatients = mergedPatients.filter(p => 
     `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.phone?.includes(searchTerm)
   );
@@ -228,12 +249,19 @@ export default function PatientListing() {
                     <td className="p-3">
                       <div className="flex items-center gap-2 sm:gap-3">
                         <div className="w-7 h-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px] border border-blue-100 shrink-0">
-                          {p.firstName.charAt(0)}
+                          {p.firstName?.charAt(0) || 'P'}
                         </div>
-                        <div className="flex flex-col sm:block">
-                          <span className="font-bold text-blue-600 group-hover:underline text-xs sm:text-sm">
-                            {p.firstName} {p.lastName}
-                          </span>
+                        <div className="flex flex-col">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-blue-600 group-hover:underline text-xs sm:text-sm">
+                              {p.firstName} {p.lastName}
+                            </span>
+                            {p.isOfflinePending && (
+                              <span className="bg-amber-100 text-amber-800 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse whitespace-nowrap">
+                                Offline Draft
+                              </span>
+                            )}
+                          </div>
                           <span className="sm:hidden text-[9px] text-slate-400 uppercase font-mono">{p.phone || t("NO_PHONE")}</span>
                         </div>
                       </div>

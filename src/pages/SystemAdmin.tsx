@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   collection, 
   getDocs, 
+  getDoc,
   addDoc, 
   serverTimestamp,
   doc,
@@ -63,10 +64,153 @@ export default function SystemAdmin() {
   const fetchHospitals = async () => {
     setLoadingHospitals(true);
     try {
-      const querySnapshot = await getDocs(collection(db, "hospitals"));
-      setHospitals(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const uniqueHospitalsMap = new Map<string, any>();
+
+      // 1. Fetch from healthone collection
+      try {
+        // a. Specifically fetch the individual config document containing the list of hospitals as array of strings
+        const hConfigDocRef = doc(db, "healthone", "healthone_hospitals");
+        const hConfigDocSnap = await getDoc(hConfigDocRef);
+        if (hConfigDocSnap.exists()) {
+          const data = hConfigDocSnap.data();
+          if (Array.isArray(data.value)) {
+            data.value.forEach((hName: any) => {
+              if (hName && typeof hName === "string") {
+                uniqueHospitalsMap.set(hName, {
+                  id: hName,
+                  name: hName,
+                  address: "HealthOne Pre-configured Tenant (Ndjili Component)",
+                  hospitalId: hName,
+                  email: "",
+                  phone: ""
+                });
+              }
+            });
+          }
+        }
+
+        // b. Fetch all other documents in the healthone collection (as individual entries)
+        const h1Snap = await getDocs(collection(db, "healthone"));
+        h1Snap.docs.forEach(docSnap => {
+          if (docSnap.id === "healthone_hospitals" || docSnap.id === "healthone_patients" || docSnap.id === "healthone_users") {
+            const data = docSnap.data();
+            if (Array.isArray(data.value)) {
+              data.value.forEach((hName: any) => {
+                if (hName && typeof hName === "string" && !uniqueHospitalsMap.has(hName)) {
+                  uniqueHospitalsMap.set(hName, {
+                    id: hName,
+                    name: hName,
+                    address: "HealthOne Pre-configured Tenant",
+                    hospitalId: hName,
+                    email: "",
+                    phone: ""
+                  });
+                }
+              });
+            }
+            return;
+          }
+
+          const rawData = docSnap.data();
+          if (rawData && rawData.name) {
+            uniqueHospitalsMap.set(docSnap.id, {
+              id: docSnap.id,
+              name: rawData.name,
+              address: rawData.address || "No Address Provided",
+              email: rawData.email || "",
+              contactEmail: rawData.contactEmail || "",
+              phone: rawData.phone || "",
+              hospitalId: rawData.hospitalId || docSnap.id
+            });
+          }
+        });
+      } catch (err) {
+        console.error("Error fetching from healthone collection:", err);
+      }
+
+      // 2. Fetch from healthone_hospitals collection (and its specific config document if exists)
+      try {
+        const hhDocRef = doc(db, "healthone_hospitals", "healthone_hospitals");
+        const hhDocSnap = await getDoc(hhDocRef);
+        if (hhDocSnap.exists()) {
+          const data = hhDocSnap.data();
+          if (Array.isArray(data.value)) {
+            data.value.forEach((hName: any) => {
+              if (hName && typeof hName === "string" && !uniqueHospitalsMap.has(hName)) {
+                uniqueHospitalsMap.set(hName, {
+                  id: hName,
+                  name: hName,
+                  address: "HealthOne Pre-configured Tenant",
+                  hospitalId: hName,
+                  email: "",
+                  phone: ""
+                });
+              }
+            });
+          }
+        }
+
+        const hhSnap = await getDocs(collection(db, "healthone_hospitals"));
+        hhSnap.docs.forEach(docSnap => {
+          if (docSnap.id === "healthone_hospitals") {
+            const data = docSnap.data();
+            if (Array.isArray(data.value)) {
+              data.value.forEach((hName: any) => {
+                if (hName && typeof hName === "string" && !uniqueHospitalsMap.has(hName)) {
+                  uniqueHospitalsMap.set(hName, {
+                    id: hName,
+                    name: hName,
+                    address: "HealthOne Pre-configured Tenant",
+                    hospitalId: hName,
+                    email: "",
+                    phone: ""
+                  });
+                }
+              });
+            }
+            return;
+          }
+
+          const rawData = docSnap.data();
+          if (rawData && rawData.name && !uniqueHospitalsMap.has(docSnap.id)) {
+            uniqueHospitalsMap.set(docSnap.id, {
+              id: docSnap.id,
+              name: rawData.name,
+              address: rawData.address || "No Address Provided",
+              email: rawData.email || "",
+              phone: rawData.phone || "",
+              hospitalId: rawData.hospitalId || docSnap.id
+            });
+          }
+        });
+      } catch (err) {
+        console.error("Error fetching from healthone_hospitals collection:", err);
+      }
+
+      // 3. Fetch from hospitals collection as fallback
+      try {
+        const hSnap = await getDocs(collection(db, "hospitals"));
+        hSnap.docs.forEach(docSnap => {
+          if (!uniqueHospitalsMap.has(docSnap.id)) {
+            const rawData = docSnap.data();
+            uniqueHospitalsMap.set(docSnap.id, {
+              id: docSnap.id,
+              name: rawData.name,
+              address: rawData.address || "No Address Provided",
+              email: rawData.email || "",
+              phone: rawData.phone || "",
+              hospitalId: rawData.hospitalId || docSnap.id
+            });
+          }
+        });
+      } catch (err) {
+        console.error("Error fetching from hospitals collection:", err);
+      }
+
+      const mergedList = Array.from(uniqueHospitalsMap.values());
+      setHospitals(mergedList);
     } catch (err) {
-      console.error("Error fetching hospitals:", err);
+      console.error("Error in fetchHospitals combined query:", err);
     } finally {
       setLoadingHospitals(false);
     }

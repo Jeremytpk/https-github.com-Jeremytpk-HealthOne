@@ -18,16 +18,21 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useOfflineSync } from "../contexts/OfflineSyncContext";
 import { auth } from "../firebase";
 import { motion, AnimatePresence } from "motion/react";
 import { getNormalizedRole } from "../lib/utils";
+import OfflineSyncCenter from "./OfflineSyncCenter";
+import { Wifi, WifiOff, RefreshCw } from "lucide-react";
 
 const Layout: React.FC = () => {
   const { profile } = useAuth();
   const { t, language, setLanguage } = useLanguage();
+  const { isOfflineMode, queuedItems, isOnline } = useOfflineSync();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(false);
+  const [isSyncOpen, setIsSyncOpen] = useState(false);
 
   const [headerSearch, setHeaderSearch] = React.useState("");
   const navigate = useNavigate();
@@ -122,13 +127,23 @@ const Layout: React.FC = () => {
       </div>
 
       <div className="p-4 border-t border-slate-700 bg-slate-800/50 space-y-4">
-        <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase">
+        <button
+          onClick={() => setIsSyncOpen(true)}
+          className="w-full flex items-center justify-between text-[10px] text-slate-400 uppercase text-left group hover:text-white transition-colors"
+        >
           <span>{t("systemMode")}</span>
-          <span className="text-emerald-400 flex items-center gap-1">
-            <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
-            {t("cloudSync")}
-          </span>
-        </div>
+          {isOfflineMode ? (
+            <span className="text-rose-400 flex items-center gap-1 font-bold">
+              <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+              OFFLINE
+            </span>
+          ) : (
+            <span className="text-emerald-400 flex items-center gap-1">
+              <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+              {t("cloudSync")}
+            </span>
+          )}
+        </button>
         
         <button
           onClick={() => auth.signOut()}
@@ -220,6 +235,36 @@ const Layout: React.FC = () => {
               />
             </form>
 
+            {/* OFFLINE STATUS HEADER TRIGGER */}
+            <button
+              onClick={() => setIsSyncOpen(true)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-full text-[10px] font-bold transition-all cursor-pointer select-none hover:opacity-95 ${
+                isOfflineMode 
+                  ? 'border-rose-200 text-rose-600 bg-rose-50/30' 
+                  : queuedItems.length > 0 
+                  ? 'border-amber-200 text-amber-600 bg-amber-50/40 animate-pulse font-mono' 
+                  : 'border-emerald-200 text-emerald-600 bg-emerald-50/20'
+              }`}
+              title="Manage local/offline sync workload"
+            >
+              {isOfflineMode ? (
+                <>
+                  <WifiOff className="w-3.5 h-3.5 text-rose-500" />
+                  <span className="hidden xs:inline uppercase tracking-wider">{language === 'fr' ? "Hors-ligne" : "Local Store"}</span>
+                </>
+              ) : (
+                <>
+                  <Wifi className="w-3.5 h-3.5 text-emerald-550" />
+                  <span className="hidden xs:inline uppercase tracking-wider text-slate-600">{language === 'fr' ? "Fichiers Cloud" : "Cloud Active"}</span>
+                </>
+              )}
+              {queuedItems.length > 0 && (
+                <span className="bg-amber-500 text-white font-mono text-[9px] px-1.5 py-0.5 rounded-full font-extrabold shrink-0">
+                  {queuedItems.length} pending
+                </span>
+              )}
+            </button>
+
             <div className="hidden sm:flex items-center gap-2 text-[10px] font-bold bg-slate-100 px-3 py-1.5 rounded-full">
               <Globe className="w-3 h-3 text-slate-400" />
               <button 
@@ -260,20 +305,57 @@ const Layout: React.FC = () => {
         {/* STATUS BAR - Hidden on mobile */}
         <footer className="hidden sm:flex h-8 bg-white border-t border-slate-200 items-center justify-between px-4 text-[10px] text-slate-500 flex-shrink-0">
           <div className="flex gap-4 italic truncate">
-            <span className="flex items-center gap-1 font-mono whitespace-nowrap">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" /> 
-              {t("online")} | {profile?.role?.toUpperCase()}
-            </span>
+            {isOfflineMode ? (
+              <span className="flex items-center gap-1 font-mono whitespace-nowrap text-amber-600 font-bold animate-pulse">
+                <WifiOff className="w-3.5 h-3.5 text-rose-500" />
+                OFFLINE | {profile?.role?.toUpperCase()}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 font-mono whitespace-nowrap text-emerald-600 font-bold">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                {t("online")} | {profile?.role?.toUpperCase()}
+              </span>
+            )}
             <span className="truncate">
               {t("hospitalAbbr")}: {profile?.hospitalId ? profile.hospitalId.slice(-8).toUpperCase() : "ROOT"}
             </span>
           </div>
           <div className="flex gap-4 shrink-0">
             <span className="hidden md:inline">HIPAA | GDPR | HDS</span>
-            <span className="font-bold text-slate-800">HEALTHONE 4.0</span>
+            <span 
+              onClick={() => setIsSyncOpen(true)}
+              className="font-bold text-slate-800 hover:text-blue-600 transition-colors cursor-pointer"
+            >
+              HEALTHONE 4.0 {queuedItems.length > 0 && `(${queuedItems.length} PENDING SYNC)`}
+            </span>
           </div>
         </footer>
       </div>
+
+      {/* OFFLINE SYNC MODAL OVERLAY */}
+      <AnimatePresence>
+        {isSyncOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSyncOpen(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              style={{ pointerEvents: 'auto' }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: "spring", damping: 25, stiffness: 280 }}
+              className="relative w-full max-w-lg md:max-w-xl z-[110]"
+            >
+              <OfflineSyncCenter onClose={() => setIsSyncOpen(false)} />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -16,6 +16,7 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useOfflineSync } from "../contexts/OfflineSyncContext";
 import { getNormalizedRole } from "../lib/utils";
 import { 
   Calendar, 
@@ -43,6 +44,7 @@ export default function PatientDetails() {
   const navigate = useNavigate();
   const { hospitalId, profile } = useAuth();
   const { t, language } = useLanguage();
+  const { isOfflineMode, addOfflineDoc, getQueuedItemsForCollection } = useOfflineSync();
   
   const [patient, setPatient] = useState<any>(null);
   const [cases, setCases] = useState<any[]>([]);
@@ -167,40 +169,99 @@ export default function PatientDetails() {
   }, [selectedCase]);
 
   const fetchPatient = async () => {
-    const docSnap = await getDoc(doc(db, "patients", id!));
-    if (docSnap.exists()) setPatient({ id: docSnap.id, ...docSnap.data() });
+    if (id?.startsWith("offline_")) {
+      const queuedPatient = getQueuedItemsForCollection("patients").find(p => p.id === id);
+      if (queuedPatient) {
+        setPatient({ id: queuedPatient.id, ...queuedPatient.data });
+      }
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const docSnap = await getDoc(doc(db, "patients", id!));
+      if (docSnap.exists()) setPatient({ id: docSnap.id, ...docSnap.data() });
+    } catch (e) {
+      console.error("Error fetching patient, using fallback offline storage:", e);
+      const queuedPatient = getQueuedItemsForCollection("patients").find(p => p.id === id);
+      if (queuedPatient) {
+        setPatient({ id: queuedPatient.id, ...queuedPatient.data });
+      }
+    }
     setLoading(false);
   };
 
   const fetchCases = async () => {
-    const q = query(
-      collection(db, "medical_cases"), 
-      where("patientId", "==", id!)
-    );
-    const querySnapshot = await getDocs(q);
-    const fetchedCases = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    fetchedCases.sort((a: any, b: any) => {
-      const getMillis = (t: any) => t && typeof t.toMillis === 'function' ? t.toMillis() : (t?.seconds ? t.seconds * 1000 : 0);
+    let fetchedCases: any[] = [];
+    if (!id?.startsWith("offline_")) {
+      try {
+        const q = query(
+          collection(db, "medical_cases"), 
+          where("patientId", "==", id!)
+        );
+        const querySnapshot = await getDocs(q);
+        fetchedCases = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } catch (e) {
+        console.error("Failed to fetch cases online, reverting to offline merge:", e);
+      }
+    }
+
+    const offlineCases = getQueuedItemsForCollection("medical_cases")
+      .filter((item: any) => item.data.patientId === id)
+      .map((item: any) => ({ id: item.id, ...item.data }));
+
+    const mergedCases = [...offlineCases, ...fetchedCases];
+
+    mergedCases.sort((a: any, b: any) => {
+      const getMillis = (t: any) => {
+        if (!t) return 0;
+        if (typeof t.toMillis === 'function') return t.toMillis();
+        if (t.seconds) return t.seconds * 1000;
+        try { return new Date(t).getTime(); } catch {}
+        return 0;
+      };
       return getMillis(b.createdAt) - getMillis(a.createdAt);
     });
-    setCases(fetchedCases);
-    if (fetchedCases.length > 0 && !selectedCase) {
-        setSelectedCase(fetchedCases[0]);
+
+    setCases(mergedCases);
+    if (mergedCases.length > 0 && !selectedCase) {
+      setSelectedCase(mergedCases[0]);
     }
   };
 
   const fetchNotes = async (caseId: string) => {
-    const q = query(
-      collection(db, "evolution_notes"), 
-      where("caseId", "==", caseId)
-    );
-    const querySnapshot = await getDocs(q);
-    const fetchedNotes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    fetchedNotes.sort((a: any, b: any) => {
-      const getMillis = (t: any) => t && typeof t.toMillis === 'function' ? t.toMillis() : (t?.seconds ? t.seconds * 1000 : 0);
+    let fetchedNotes: any[] = [];
+    if (!caseId?.startsWith("offline_")) {
+      try {
+        const q = query(
+          collection(db, "evolution_notes"), 
+          where("caseId", "==", caseId)
+        );
+        const querySnapshot = await getDocs(q);
+        fetchedNotes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } catch (e) {
+        console.error("Failed to fetch notes online, reverting to offline merge:", e);
+      }
+    }
+
+    const offlineNotes = getQueuedItemsForCollection("evolution_notes")
+      .filter((item: any) => item.data.caseId === caseId)
+      .map((item: any) => ({ id: item.id, ...item.data }));
+
+    const mergedNotes = [...offlineNotes, ...fetchedNotes];
+
+    mergedNotes.sort((a: any, b: any) => {
+      const getMillis = (t: any) => {
+        if (!t) return 0;
+        if (typeof t.toMillis === 'function') return t.toMillis();
+        if (t.seconds) return t.seconds * 1000;
+        try { return new Date(t).getTime(); } catch {}
+        return 0;
+      };
       return getMillis(b.createdAt) - getMillis(a.createdAt);
     });
-    setNotes(fetchedNotes);
+
+    setNotes(mergedNotes);
   };
 
   const handleAddNote = async (e: React.FormEvent) => {
@@ -208,7 +269,7 @@ export default function PatientDetails() {
     if (!newNote.trim() || !selectedCase || !profile) return;
 
     try {
-      await addDoc(collection(db, "evolution_notes"), {
+      const notePayload = {
         caseId: selectedCase.id,
         patientId: id,
         hospitalId: hospitalId || selectedCase.hospitalId || patient?.hospitalId || "",
@@ -216,8 +277,18 @@ export default function PatientDetails() {
         authorName: profile.fullName || profile.name || profile.username || "Staff",
         authorRole: profile.role || "Staff",
         content: newNote,
-        createdAt: serverTimestamp()
-      });
+        createdAt: isOfflineMode ? new Date().toISOString() : serverTimestamp()
+      };
+
+      if (isOfflineMode) {
+        await addOfflineDoc(
+          "evolution_notes", 
+          notePayload, 
+          `Evolution Note for case "${selectedCase.title}": ${newNote.length > 25 ? newNote.slice(0, 25) + "..." : newNote}`
+        );
+      } else {
+        await addDoc(collection(db, "evolution_notes"), notePayload);
+      }
       setNewNote("");
       fetchNotes(selectedCase.id);
     } catch (error) {
@@ -249,19 +320,31 @@ export default function PatientDetails() {
         authorName: profile.fullName || profile.name || profile.username || "Staff",
         authorRole: profile.role || "Staff",
         status: "OPEN",
-        createdAt: serverTimestamp()
+        createdAt: isOfflineMode ? new Date().toISOString() : serverTimestamp()
       };
       if (newCaseData.hasMedicines) {
         caseRefData.medicines = newCaseData.medicines.trim();
       }
 
-      const docRef = await addDoc(collection(db, "medical_cases"), caseRefData);
+      let caseId = "";
+      if (isOfflineMode) {
+        const res = await addOfflineDoc(
+          "medical_cases", 
+          caseRefData, 
+          `Medical Case: ${newCaseData.title.trim()}`
+        );
+        caseId = res.id;
+      } else {
+        const docRef = await addDoc(collection(db, "medical_cases"), caseRefData);
+        caseId = docRef.id;
+      }
+
       setShowCaseModal(false);
       setNewCaseData({ title: "", description: "", hasMedicines: false, medicines: "" });
       fetchCases();
       // Auto-select the new case
       const newCase = { 
-        id: docRef.id, 
+        id: caseId, 
         title: newCaseData.title.trim(),
         description: newCaseData.description.trim(),
         authorId: profile.id, 
@@ -269,7 +352,8 @@ export default function PatientDetails() {
         authorRole: profile.role || "Staff",
         hospitalId: resolvedHospitalId,
         medicines: newCaseData.hasMedicines ? newCaseData.medicines.trim() : "",
-        status: "OPEN" 
+        status: "OPEN",
+        isOfflinePending: isOfflineMode ? true : undefined
       };
       setSelectedCase(newCase);
     } catch (error: any) {

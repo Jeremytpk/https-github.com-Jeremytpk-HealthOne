@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import { OfflineSyncProvider } from "./contexts/OfflineSyncContext";
 import Layout from "./components/Layout";
 import { getNormalizedRole } from "./lib/utils";
 import LoadingPage from "./components/LoadingPage";
@@ -42,56 +43,58 @@ export default function App() {
   return (
     <Router>
       <LanguageProvider>
-        <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            
-            <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-              <Route index element={<Dashboard />} />
+        <OfflineSyncProvider>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
               
-              <Route path="patients" element={
-                <ProtectedRoute allowedRoles={['DOCTOR', 'NURSE', 'RECEPTIONIST', 'REGISTER', 'CASHIER']}>
-                  <PatientListing />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="patients/:id" element={
-                <ProtectedRoute allowedRoles={['DOCTOR', 'NURSE', 'RECEPTIONIST', 'REGISTER', 'CASHIER']}>
-                  <PatientDetails />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="staff" element={
-                <ProtectedRoute allowedRoles={['HR']}>
-                  <StaffManagement />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="inventory" element={
-                <ProtectedRoute allowedRoles={['PHARMACIST']}>
-                  <Inventory />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="pharmacy" element={
-                <ProtectedRoute allowedRoles={['PHARMACIST', 'DOCTOR']}>
-                  <Pharmacy />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="finance" element={
-                <ProtectedRoute allowedRoles={['CASHIER']}>
-                  <Finance />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="profile" element={<Profile />} />
-              <Route path="system-admin" element={<ProtectedRoute allowedRoles={['SYSTEM_ADMIN', 'SUP_ADMIN']}><SystemAdmin /></ProtectedRoute>} />
-            </Route>
+              <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                <Route index element={<Dashboard />} />
+                
+                <Route path="patients" element={
+                  <ProtectedRoute allowedRoles={['DOCTOR', 'NURSE', 'RECEPTIONIST', 'REGISTER', 'CASHIER']}>
+                    <PatientListing />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="patients/:id" element={
+                  <ProtectedRoute allowedRoles={['DOCTOR', 'NURSE', 'RECEPTIONIST', 'REGISTER', 'CASHIER']}>
+                    <PatientDetails />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="staff" element={
+                  <ProtectedRoute allowedRoles={['HR']}>
+                    <StaffManagement />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="inventory" element={
+                  <ProtectedRoute allowedRoles={['PHARMACIST']}>
+                    <Inventory />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="pharmacy" element={
+                  <ProtectedRoute allowedRoles={['PHARMACIST', 'DOCTOR']}>
+                    <Pharmacy />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="finance" element={
+                  <ProtectedRoute allowedRoles={['CASHIER']}>
+                    <Finance />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="profile" element={<Profile />} />
+                <Route path="system-admin" element={<ProtectedRoute allowedRoles={['SYSTEM_ADMIN', 'SUP_ADMIN']}><SystemAdmin /></ProtectedRoute>} />
+              </Route>
 
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </AuthProvider>
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </AuthProvider>
+        </OfflineSyncProvider>
       </LanguageProvider>
     </Router>
   );
