@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useOfflineSync } from "../contexts/OfflineSyncContext";
 import { db } from "../firebase";
 import { getNormalizedRole } from "../lib/utils";
 import { 
@@ -303,11 +304,43 @@ const SupAdminDashboard = ({ t }: any) => {
 
 const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
   const { language } = useLanguage();
-  const [patients, setPatients] = useState<any[]>([]);
-  const [pediatricians, setPediatricians] = useState<any[]>([]);
-  const [allStaff, setAllStaff] = useState<any[]>([]);
+  const { isOfflineMode, getQueuedItemsForCollection, removeQueuedItem } = useOfflineSync();
+
+  const [patients, setPatients] = useState<any[]>(() => {
+    const hId = hospitalId || profile?.hospitalId || (typeof profile?.hospital === "string" ? profile.hospital : profile?.hospital?.id);
+    if (!hId) return [];
+    try {
+      const cached = localStorage.getItem(`healthone_cached_patients_${hId}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [pediatricians, setPediatricians] = useState<any[]>(() => {
+    const hId = hospitalId || profile?.hospitalId || (typeof profile?.hospital === "string" ? profile.hospital : profile?.hospital?.id);
+    if (!hId) return [];
+    try {
+      const cached = localStorage.getItem(`healthone_cached_pediatricians_${hId}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [allStaff, setAllStaff] = useState<any[]>(() => {
+    const hId = hospitalId || profile?.hospitalId || (typeof profile?.hospital === "string" ? profile.hospital : profile?.hospital?.id);
+    if (!hId) return [];
+    try {
+      const cached = localStorage.getItem(`healthone_cached_staff_${hId}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [showAllStaff, setShowAllStaff] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isOfflineMode && patients.length === 0);
   const [viewingPedSchedule, setViewingPedSchedule] = useState<any | null>(null);
 
   // Deletion States
@@ -319,7 +352,14 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
     if (!patientToDelete) return;
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, "patients", patientToDelete.id));
+      if (patientToDelete.id.startsWith("offline_")) {
+        removeQueuedItem(patientToDelete.id);
+      } else if (isOfflineMode) {
+        setIsDeleting(false);
+        return;
+      } else {
+        await deleteDoc(doc(db, "patients", patientToDelete.id));
+      }
       setShowDeleteConfirm(false);
       setPatientToDelete(null);
     } catch (err) {
@@ -330,7 +370,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
   };
 
   const handleSavePedSchedule = async (newSchedule: string[]) => {
-    if (!viewingPedSchedule) return;
+    if (!viewingPedSchedule || isOfflineMode) return;
     try {
       await updateDoc(doc(db, "users", viewingPedSchedule.id), {
         schedule: newSchedule
@@ -359,6 +399,31 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
       return;
     }
 
+    // Load from cache initially
+    try {
+      const cachedPatients = localStorage.getItem(`healthone_cached_patients_${hId}`);
+      if (cachedPatients) {
+        setPatients(JSON.parse(cachedPatients));
+      }
+      const cachedStaff = localStorage.getItem(`healthone_cached_staff_${hId}`);
+      if (cachedStaff) {
+        setAllStaff(JSON.parse(cachedStaff));
+      }
+      const cachedPeds = localStorage.getItem(`healthone_cached_pediatricians_${hId}`);
+      if (cachedPeds) {
+        setPediatricians(JSON.parse(cachedPeds));
+      }
+    } catch (e) {
+      console.error("Failed to load cached dashboard data:", e);
+    }
+
+    if (isOfflineMode) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
     const q = query(
       collection(db, "patients"),
       where("hospitalId", "==", hId)
@@ -375,7 +440,13 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
         const dateB = b.createdAt?.seconds || 0;
         return dateB - dateA;
       });
-      setPatients(patientData.slice(0, 10));
+      const topPatients = patientData.slice(0, 10);
+      setPatients(topPatients);
+      try {
+        localStorage.setItem(`healthone_cached_patients_${hId}`, JSON.stringify(topPatients));
+      } catch (e) {
+        console.error("Failed to save patient dashboard cache", e);
+      }
       setLoading(false);
     }, (error) => {
       console.error("Dashboard Snap Error:", error);
@@ -402,6 +473,11 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
       // Filter to same hospital
       const filteredStaff = allUsers.filter((u: any) => u.resolvedHospitalId === hId);
       setAllStaff(filteredStaff);
+      try {
+        localStorage.setItem(`healthone_cached_staff_${hId}`, JSON.stringify(filteredStaff));
+      } catch (e) {
+        console.error("Failed to save staff cache", e);
+      }
 
       const peds = filteredStaff.filter((u: any) => {
         const roleUpper = u.role?.toUpperCase() || "";
@@ -417,6 +493,11 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
         );
       });
       setPediatricians(peds);
+      try {
+        localStorage.setItem(`healthone_cached_pediatricians_${hId}`, JSON.stringify(peds));
+      } catch (e) {
+        console.error("Failed to save pediatricians cache", e);
+      }
     }, (error) => {
       console.error("Staff fetch snap error:", error);
     });
@@ -425,14 +506,36 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
       unsubscribe();
       unsubscribeStaff();
     };
-  }, [hospitalId, profile]);
+  }, [hospitalId, profile, isOfflineMode]);
+
+  const offlinePatients = getQueuedItemsForCollection("patients")
+    .filter((item: any) => item.data.hospitalId === hospitalId)
+    .map((item: any) => ({ id: item.id, ...item.data }));
+
+  const mergedPatients = [...offlinePatients, ...patients];
 
   const displayList = showAllStaff ? allStaff : pediatricians;
 
   return (
     <div className="space-y-4">
+      {isOfflineMode && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-center justify-between shadow-sm animate-pulse">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 bg-amber-500 rounded-full inline-block animate-ping" />
+            <span>
+              {language === 'fr' 
+                ? "Mode hors ligne actif. Les nouvelles inscriptions sont enregistrées localement et prêtes à être synchronisées." 
+                : "Offline mode active. New registrations are saved locally and queued for synchronization."}
+            </span>
+          </div>
+          <span className="text-[10px] bg-amber-100 px-2 py-0.5 rounded font-mono font-bold uppercase shrink-0">
+            {language === 'fr' ? "LOCAL" : "STANDALONE"}
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard title={t("labRegistry")} value={patients.length.toString()} icon={Users} trend="+12 today" variant="dark" />
+        <StatCard title={t("labRegistry")} value={mergedPatients.length.toString()} icon={Users} trend="+12 today" variant="dark" />
         <StatCard title={t("avgTriageWait")} value="14 min" icon={Clock} trend="↑ 2m vs yesterday" />
         <StatCard title={t("insuranceVerified")} value="82%" icon={CheckCircle2} trend="Optimal" />
         <StatCard title={t("emergencyAdmits")} value="03" icon={Activity} trend="Active Now" />
@@ -534,16 +637,23 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr><td colSpan={6} className="p-8 text-center text-slate-400 text-xs italic">{t("syncingRecords")}</td></tr>
-                ) : patients.length === 0 ? (
+                ) : mergedPatients.length === 0 ? (
                   <tr><td colSpan={6} className="p-8 text-center text-slate-400 text-xs italic">{t("noPatientsRegistered")}</td></tr>
-                ) : patients.map((p) => (
+                ) : mergedPatients.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50 transition-colors group text-xs text-nowrap lg:text-wrap">
-                    <td className="p-3 pl-4 font-mono text-slate-400 italic">#{p.id.slice(-6).toUpperCase()}</td>
+                    <td className="p-3 pl-4 font-mono text-slate-400 italic">
+                      {p.id.startsWith("offline_") ? "DRAFT" : `#${p.id.slice(-6).toUpperCase()}`}
+                    </td>
                     <td className="p-3">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Link to={`/patients/${p.id}`} className="font-bold text-blue-600 hover:underline">
                           {p.firstName} {p.lastName}
                         </Link>
+                        {p.isOfflinePending && (
+                          <span className="bg-amber-100 text-amber-800 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse whitespace-nowrap">
+                            Offline Draft
+                          </span>
+                        )}
                         {p.department && (
                           <span className="bg-purple-50 border border-purple-100 text-purple-700 text-[9px] font-mono uppercase font-bold px-1.5 py-0.5 rounded">
                             {t(p.department === "Pediatrics" ? "pediatricsDept" : p.department === "General Medicine" ? "generalMedicineDept" : p.department === "Emergency" ? "emergencyDept" : p.department === "Cardiology" ? "cardiologyDept" : p.department)}
@@ -561,8 +671,17 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                             setPatientToDelete(p);
                             setShowDeleteConfirm(true);
                           }}
-                          className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded transition-colors inline-block"
-                          title={t("deletePatient")}
+                          disabled={isOfflineMode && !p.id.startsWith("offline_")}
+                          className={`p-1 rounded transition-colors inline-block ${
+                            isOfflineMode && !p.id.startsWith("offline_")
+                              ? "opacity-35 cursor-not-allowed text-slate-300"
+                              : "hover:bg-rose-50 text-slate-400 hover:text-rose-600"
+                          }`}
+                          title={
+                            isOfflineMode && !p.id.startsWith("offline_")
+                              ? (language === 'fr' ? "Suppression indisponible hors ligne" : "Deletion unavailable offline")
+                              : t("deletePatient")
+                          }
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -643,7 +762,13 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                         </p>
                         <button
                           onClick={() => setViewingPedSchedule(ped)}
-                          className="px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-100 text-[9px] font-mono font-bold tracking-wider uppercase flex items-center gap-1 cursor-pointer shrink-0"
+                          disabled={isOfflineMode}
+                          className={`px-2 py-0.5 border text-[9px] font-mono font-bold tracking-wider uppercase flex items-center gap-1 shrink-0 ${
+                            isOfflineMode 
+                              ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-60"
+                              : "bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-100 cursor-pointer"
+                          }`}
+                          title={isOfflineMode ? (language === 'fr' ? "Gestion indisponible hors ligne" : "Management unavailable offline") : ""}
                         >
                           <Calendar className="w-3 h-3" />
                           {language === 'fr' ? "Gérer" : "Calendar"}
@@ -653,6 +778,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                       <MiniAuditedCalendar 
                         schedule={docSchedule} 
                         onChangeSchedule={async (newSchedule) => {
+                          if (isOfflineMode) return;
                           try {
                             await updateDoc(doc(db, "users", ped.id), {
                               schedule: newSchedule
@@ -761,8 +887,19 @@ const weekdayDisplayFr: Record<string, string> = {
 const DoctorDashboard = ({ t, hospitalId }: any) => {
   const { profile, updateProfile } = useAuth();
   const { language } = useLanguage();
-  const [patients, setPatients] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { isOfflineMode, getQueuedItemsForCollection } = useOfflineSync();
+
+  const [patients, setPatients] = useState<any[]>(() => {
+    if (!hospitalId) return [];
+    try {
+      const cached = localStorage.getItem(`healthone_cached_patients_${hospitalId}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [loading, setLoading] = useState(!isOfflineMode && patients.length === 0);
   const [schedule, setSchedule] = useState<string[]>([]);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
 
@@ -775,6 +912,7 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
   }, [profile?.schedule]);
 
   const handleSaveSchedule = async (newSchedule: string[]) => {
+    if (isOfflineMode) return;
     setSchedule(newSchedule);
     try {
       await updateProfile({ schedule: newSchedule });
@@ -784,6 +922,7 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
   };
 
   const toggleDay = async (day: string) => {
+    if (isOfflineMode) return;
     let updatedSchedule = [...schedule];
     if (updatedSchedule.includes(day)) {
       updatedSchedule = updatedSchedule.filter(d => d !== day);
@@ -804,6 +943,22 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
       return;
     }
 
+    try {
+      const cachedPatients = localStorage.getItem(`healthone_cached_patients_${hospitalId}`);
+      if (cachedPatients) {
+        setPatients(JSON.parse(cachedPatients));
+      }
+    } catch (e) {
+      console.error("Failed to load doctor dashboard cached patients", e);
+    }
+
+    if (isOfflineMode) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
     const q = query(
       collection(db, "patients"),
       where("hospitalId", "==", hospitalId)
@@ -820,6 +975,11 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
         return dateB - dateA;
       });
       setPatients(patientData);
+      try {
+        localStorage.setItem(`healthone_cached_patients_${hospitalId}`, JSON.stringify(patientData));
+      } catch (e) {
+        console.error("Failed to cache doctor dashboard patients", e);
+      }
       setLoading(false);
     }, (error) => {
       console.error("Doctor Dashboard Snap Error:", error);
@@ -827,18 +987,49 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
     });
 
     return () => unsubscribe();
-  }, [hospitalId]);
+  }, [hospitalId, isOfflineMode]);
+
+  const offlinePatients = getQueuedItemsForCollection("patients")
+    .filter((item: any) => item.data.hospitalId === hospitalId)
+    .map((item: any) => ({ id: item.id, ...item.data }));
+
+  const mergedPatients = [...offlinePatients, ...patients];
 
   return (
     <div className="space-y-4">
+      {isOfflineMode && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-center justify-between shadow-sm animate-pulse">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 bg-amber-500 rounded-full inline-block animate-ping" />
+            <span>
+              {language === 'fr' 
+                ? "Mode hors ligne actif. Vos données actuelles proviennent du cache local de l'appareil." 
+                : "Offline mode active. Your current dashboard views are loading from local device cache."}
+            </span>
+          </div>
+          <span className="text-[10px] bg-amber-100 px-2 py-0.5 rounded font-mono font-bold uppercase shrink-0">
+            {language === 'fr' ? "REPLICATED" : "STANDALONE"}
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard title={t("activeConsultations")} value={patients.length > 0 ? `0${patients.length}`.slice(-2) : "00"} icon={Users} trend="Current Shift" variant="dark" />
+        <StatCard title={t("activeConsultations")} value={mergedPatients.length > 0 ? `0${mergedPatients.length}`.slice(-2) : "00"} icon={Users} trend="Current Shift" variant="dark" />
         <StatCard title={t("pendingLabResults")} value="12" icon={Activity} trend="Critical: 02" />
         
         {/* Interactive Pediatre Availability Card replacing Chirurgies Aujourd'hui */}
         <button 
-          onClick={() => setShowCalendarModal(true)}
-          className="p-4 rounded-xl border flex flex-col justify-between shadow-sm relative overflow-hidden h-28 bg-white border-slate-200 text-slate-900 group cursor-pointer text-left hover:border-blue-500 hover:shadow-md transition-all duration-200"
+          onClick={() => {
+            if (isOfflineMode) return;
+            setShowCalendarModal(true);
+          }}
+          disabled={isOfflineMode}
+          className={`p-4 rounded-xl border flex flex-col justify-between shadow-sm relative overflow-hidden h-28 text-left transition-all duration-200 ${
+            isOfflineMode
+              ? "bg-slate-50 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed"
+              : "bg-white border-slate-200 text-slate-900 hover:border-blue-500 hover:shadow-md group cursor-pointer"
+          }`}
+          title={isOfflineMode ? (language === 'fr' ? "Planification indisponible hors ligne" : "Scheduling unavailable offline") : ""}
         >
           <div className="flex items-start justify-between w-full">
             <div className="flex flex-col gap-0.5 min-w-0">
@@ -872,7 +1063,7 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
          <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[300px] lg:h-full">
             <div className="p-3 border-b border-slate-100 bg-slate-50/50 font-bold text-xs flex items-center justify-between">
                <span>{t("myPatientQueue")}</span>
-               <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{patients.length}</span>
+               <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{mergedPatients.length}</span>
             </div>
             <div className="p-0 overflow-auto flex-1">
                <table className="w-full text-left text-xs min-w-[500px] lg:min-w-0">
@@ -891,17 +1082,24 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
                            {t("syncingRecords") || "Loading..."}
                          </td>
                        </tr>
-                     ) : patients.length === 0 ? (
+                     ) : mergedPatients.length === 0 ? (
                        <tr>
                          <td colSpan={4} className="p-8 text-center text-slate-400 italic">
                            {t("noPatientsRegistered") || "No patients found in your queue."}
                          </td>
                        </tr>
                      ) : (
-                       patients.map((p) => (
+                       mergedPatients.map((p) => (
                          <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                             <td className="p-3 pl-4 font-bold text-slate-800">
-                              {p.firstName} {p.lastName}
+                              <div className="flex flex-wrap items-center gap-1.5 font-bold text-slate-800">
+                                <span>{p.firstName} {p.lastName}</span>
+                                {p.isOfflinePending && (
+                                  <span className="bg-amber-100 text-amber-800 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse whitespace-nowrap">
+                                    Offline Draft
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3 uppercase text-slate-500 font-mono">
                               {t(p.gender?.toUpperCase() || "NA")}
