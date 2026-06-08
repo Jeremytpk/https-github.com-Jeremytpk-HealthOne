@@ -27,6 +27,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { format } from "date-fns";
+import { getNormalizedRole } from "../lib/utils";
 
 export default function Finance() {
   const { hospitalId, profile } = useAuth();
@@ -48,23 +49,55 @@ export default function Finance() {
     currency: "USD",
     method: "CASH",
     status: "PAID",
-    reference: ""
+    reference: "",
+    caseId: ""
   });
 
-  useEffect(() => {
-    if (hospitalId) fetchPayments();
-  }, [hospitalId]);
+  const [viewingPatientPaymentsId, setViewingPatientPaymentsId] = useState<string | null>(null);
+  const [viewingPatientName, setViewingPatientName] = useState<string>("");
+  const [viewingCases, setViewingCases] = useState<any[]>([]);
 
   useEffect(() => {
-    if (hospitalId && showAddModal) {
-      const fetchPatientsList = async () => {
+    if (viewingPatientPaymentsId) {
+      const fetchCasesForViewingPatient = async () => {
         try {
           const q = query(
-            collection(db, "patients"),
-            where("hospitalId", "==", hospitalId)
+            collection(db, "medical_cases"),
+            where("patientId", "==", viewingPatientPaymentsId)
           );
+          const querySnapshot = await getDocs(q);
+          setViewingCases(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any })));
+        } catch (e) {
+          console.error("Error fetching cases for viewing patient:", e);
+        }
+      };
+      fetchCasesForViewingPatient();
+    } else {
+      setViewingCases([]);
+    }
+  }, [viewingPatientPaymentsId]);
+
+  useEffect(() => {
+    if (profile) fetchPayments();
+  }, [profile, hospitalId]);
+
+  useEffect(() => {
+    if (profile && showAddModal) {
+      const fetchPatientsList = async () => {
+        try {
+          const userRole = getNormalizedRole(profile?.role);
+          const isSuper = userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN";
+          let q;
+          if (isSuper) {
+            q = query(collection(db, "patients"));
+          } else {
+            q = query(
+              collection(db, "patients"),
+              where("hospitalId", "==", hospitalId || "")
+            );
+          }
           const snap = await getDocs(q);
-          const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
           setPatientsList(list);
         } catch (e) {
           console.error("Error fetching patients list in Finance:", e);
@@ -72,7 +105,7 @@ export default function Finance() {
       };
       fetchPatientsList();
     }
-  }, [hospitalId, showAddModal]);
+  }, [profile, hospitalId, showAddModal]);
 
   const handleSelectPatient = async (pId: string) => {
     if (!pId) {
@@ -82,8 +115,11 @@ export default function Finance() {
       return;
     }
 
+    const userRole = getNormalizedRole(profile?.role);
+    const isSuper = userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN";
+
     const offlinePatients = getQueuedItemsForCollection("patients")
-      .filter((item: any) => item.data.hospitalId === hospitalId)
+      .filter((item: any) => isSuper ? true : item.data.hospitalId === hospitalId)
       .map((item: any) => ({ id: item.id, ...item.data }));
 
     const mergedPatientsList = [...offlinePatients, ...patientsList];
@@ -112,7 +148,7 @@ export default function Finance() {
           where("patientId", "==", parentPatient.id)
         );
         const qSnap = await getDocs(q);
-        fetchedCases = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        fetchedCases = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       }
       
       const offlineCases = getQueuedItemsForCollection("medical_cases")
@@ -213,12 +249,21 @@ export default function Finance() {
   const fetchPayments = async () => {
     setLoading(true);
     try {
-      const q = query(
-        collection(db, "payments"), 
-        where("hospitalId", "==", hospitalId)
-      );
+      const userRole = getNormalizedRole(profile?.role);
+      const isSuper = userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN";
+      let q;
+      if (isSuper) {
+        q = query(
+          collection(db, "payments")
+        );
+      } else {
+        q = query(
+          collection(db, "payments"), 
+          where("hospitalId", "==", hospitalId || "")
+        );
+      }
       const querySnapshot = await getDocs(q);
-      const fetchedPayments = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const fetchedPayments = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       setPayments(fetchedPayments);
     } catch (e) {
       console.error("Failed to fetch payments online:", e);
@@ -228,7 +273,10 @@ export default function Finance() {
 
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hospitalId) return;
+    const userRole = getNormalizedRole(profile?.role);
+    const isSuper = userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN";
+    const resolvedHospitalId = hospitalId || selectedPatient?.hospitalId || "system_tenant";
+    if (!resolvedHospitalId && !isSuper) return;
 
     // Reject if there are open cases for the selected patient
     const openCases = casesOfSelectedPatient.filter(c => c.status === "OPEN");
@@ -244,7 +292,7 @@ export default function Finance() {
         ...formData,
         amount: Number(formData.amount),
         currency: formData.currency || "USD",
-        hospitalId,
+        hospitalId: resolvedHospitalId,
         cashierId: profile?.id || "unknown",
         cashierName: profile?.fullName || profile?.name || "Staff",
         createdAt: isOfflineMode ? new Date().toISOString() : serverTimestamp()
@@ -261,7 +309,7 @@ export default function Finance() {
         await addDoc(collection(db, "payments"), paymentPayload);
       }
       setShowAddModal(false);
-      setFormData({ patientId: "", patientName: "", amount: "", currency: "USD", method: "CASH", status: "PAID", reference: "" });
+      setFormData({ patientId: "", patientName: "", amount: "", currency: "USD", method: "CASH", status: "PAID", reference: "", caseId: "" });
       setSelectedPatient(null);
       setCasesOfSelectedPatient([]);
       fetchPayments();
@@ -366,14 +414,40 @@ export default function Finance() {
                 </span>
                 <div className="flex flex-col pr-2">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-bold text-xs sm:text-sm truncate">{p.patientName}</span>
+                    <button
+                      onClick={() => {
+                        setViewingPatientPaymentsId(p.patientId);
+                        setViewingPatientName(p.patientName);
+                      }}
+                      className="font-bold text-xs sm:text-sm truncate text-left hover:text-slate-600 hover:underline cursor-pointer"
+                      title={language === 'fr' ? "Voir l'historique de ce patient" : "View this patient's history"}
+                    >
+                      {p.patientName}
+                    </button>
                     {p.isOfflinePending && (
                       <span className="bg-amber-100 text-amber-800 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse whitespace-nowrap">
                         Offline
                       </span>
                     )}
                   </div>
-                  <span className="text-[9px] font-mono opacity-40 uppercase truncate">REF: {p.reference || 'N/A'}</span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] font-mono opacity-40 uppercase truncate">ID: {p.patientId?.slice(-5).toUpperCase() || "N/A"} | REF: {p.reference || 'N/A'}</span>
+                    {(() => {
+                      if (!p.caseId) return null;
+                      const casePayments = mergedPayments.filter(pay => pay.caseId === p.caseId);
+                      const usdSum = casePayments.filter(pay => pay.currency === "USD" || !pay.currency).reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0);
+                      const fcSum = casePayments.filter(pay => pay.currency === "FC" || pay.currency === "CDF" || pay.currency === "CFC").reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0);
+                      
+                      return (
+                        <div className="text-[9px] font-mono text-emerald-700 font-bold uppercase mt-0.5 truncate bg-emerald-50 border border-emerald-100/50 px-1 py-0.5 inline-block w-fit">
+                          {language === 'fr' ? "Somme du Cas : " : "Case Sum: "}
+                          {usdSum > 0 && `$${usdSum.toLocaleString()} USD`}
+                          {usdSum > 0 && fcSum > 0 && " + "}
+                          {fcSum > 0 && `${fcSum.toLocaleString()} FC`}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
                 <div className="hidden lg:flex items-center gap-2 text-xs font-mono opacity-70">
                    {p.method === 'CASH' ? <Banknote className="w-3 h-3" /> : <CreditCard className="w-3 h-3" />}
@@ -549,6 +623,26 @@ export default function Finance() {
                   </div>
                 )}
 
+                {!checkingCases && selectedPatient && casesOfSelectedPatient.length > 0 && (
+                  <div className="bg-slate-50 border border-app-line p-3 mt-1.5 animate-in fade-in duration-200">
+                    <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest uppercase">
+                      {language === 'fr' ? "Associer à un dossier clinique / histoire ?" : "Link to clinical case / history?"}
+                    </label>
+                    <select
+                      value={formData.caseId || ""}
+                      onChange={(e) => setFormData({...formData, caseId: e.target.value})}
+                      className="w-full bg-white border border-app-line p-2 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-app-ink"
+                    >
+                      <option value="">-- {language === 'fr' ? "Aucun dossier lié (Paiement Général)" : "No linked case (General Payment)"} --</option>
+                      {casesOfSelectedPatient.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.title} ({c.status})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest uppercase">{language === 'fr' ? "Devise" : "Currency"}</label>
@@ -605,11 +699,129 @@ export default function Finance() {
                     setShowAddModal(false);
                     setSelectedPatient(null);
                     setCasesOfSelectedPatient([]);
-                    setFormData({ patientId: "", patientName: "", amount: "", currency: "USD", method: "CASH", status: "PAID", reference: "" });
+                    setFormData({ patientId: "", patientName: "", amount: "", currency: "USD", method: "CASH", status: "PAID", reference: "", caseId: "" });
                   }} className="px-6 py-2.5 border border-app-line font-mono text-[10px] uppercase tracking-widest hover:bg-gray-100 transition-colors uppercase">{t("halt")}</button>
                   <button type="submit" className="px-10 py-2.5 bg-app-ink text-app-bg font-mono text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity uppercase">{t("approveLog")}</button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewingPatientPaymentsId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-app-bg border border-app-line w-full max-w-xl my-auto relative shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 sm:p-8">
+              <h2 className="text-xl sm:text-2xl font-serif italic font-bold mb-4 border-b border-app-line pb-2 font-mono uppercase tracking-widest flex items-center gap-2">
+                 <Receipt className="w-6 h-6 text-emerald-600" /> {language === 'fr' ? "RELEVÉ FINANCIER DU PATIENT" : "PATIENT FINANCIAL STATEMENT"}
+              </h2>
+
+              <div className="mb-6">
+                <span className="text-[10px] uppercase font-mono opacity-50 block tracking-widest">{language === 'fr' ? "Nom du Patient" : "Patient Name"}</span>
+                <span className="text-lg font-bold text-slate-900 block font-serif italic">{viewingPatientName}</span>
+                <span className="text-[10px] font-mono opacity-50 block font-bold">ID: #{viewingPatientPaymentsId.slice(-8).toUpperCase()}</span>
+              </div>
+
+              {/* History list for this patient */}
+              {(() => {
+                const patientTrans = mergedPayments.filter(p => p.patientId === viewingPatientPaymentsId);
+                const grandTotalUsd = patientTrans.filter(p => p.currency === "USD" || !p.currency).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                const grandTotalFc = patientTrans.filter(p => p.currency === "FC" || p.currency === "CDF" || p.currency === "CFC").reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+                return (
+                  <div className="space-y-6">
+                    {/* Sum details */}
+                    <div className="grid grid-cols-2 gap-3 bg-emerald-50/20 border border-emerald-100 p-3 sm:p-4 rounded">
+                      <div>
+                        <span className="text-[9px] uppercase font-mono tracking-wider opacity-60 block">{language === 'fr' ? "Total Payé (USD)" : "Total Paid (USD)"}</span>
+                        <span className="font-mono font-bold text-lg sm:text-xl text-slate-800">${grandTotalUsd.toLocaleString()} USD</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] uppercase font-mono tracking-wider opacity-60 block">{language === 'fr' ? "Total Payé (FC)" : "Total Paid (FC)"}</span>
+                        <span className="font-mono font-bold text-lg sm:text-xl text-emerald-700">{grandTotalFc.toLocaleString()} FC</span>
+                      </div>
+                    </div>
+
+                    {/* Breakdown by clinical cases / visits if any */}
+                    <div>
+                      <h3 className="text-xs font-bold font-mono text-slate-600 tracking-wider uppercase mb-2">
+                        {language === 'fr' ? "Répartition par Cas Cliniques" : "Breakdown by Clinical Cases"}
+                      </h3>
+                      {viewingCases.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic font-mono">- {language === 'fr' ? "Aucun dossier clinique enregistré" : "No clinical cases registered for this patient"} -</p>
+                      ) : (
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {viewingCases.map(c => {
+                            const cPayments = patientTrans.filter(pt => pt.caseId === c.id);
+                            const cUsd = cPayments.filter(pt => pt.currency === "USD" || !pt.currency).reduce((s, pt) => s + Number(pt.amount), 0);
+                            const cFc = cPayments.filter(pt => pt.currency === "FC" || pt.currency === "CDF" || pt.currency === "CFC").reduce((s, pt) => s + Number(pt.amount), 0);
+                            
+                            return (
+                              <div key={c.id} className="p-2.5 bg-slate-50 border border-slate-200 flex justify-between items-center font-mono text-[11px]">
+                                <div className="flex flex-col min-w-0 pr-2">
+                                  <span className="font-bold text-slate-700 truncate">{c.title}</span>
+                                  <span className="text-[9px] opacity-40">{language === 'fr' ? "Dossier" : "Status"}: {c.status}</span>
+                                </div>
+                                <div className="text-right shrink-0 font-bold text-emerald-600">
+                                  {cUsd > 0 && <div>${cUsd.toLocaleString()} USD</div>}
+                                  {cFc > 0 && <div>{cFc.toLocaleString()} FC</div>}
+                                  {cUsd === 0 && cFc === 0 && <div className="text-slate-400">$0.00</div>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Transaction list ledger */}
+                    <div>
+                      <h3 className="text-xs font-bold font-mono text-slate-600 tracking-wider uppercase mb-2">
+                        {language === 'fr' ? "Historique des Transactions" : "Transaction Ledger"} ({patientTrans.length})
+                      </h3>
+                      {patientTrans.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic py-3 text-center">{language === 'fr' ? "Aucune transaction enregistrée" : "No transactions recorded for this patient"}</p>
+                      ) : (
+                        <div className="border border-app-line bg-white divide-y divide-app-line max-h-44 overflow-y-auto font-mono text-xs">
+                          {patientTrans.map((pt) => {
+                            const linkedCase = viewingCases.find(vc => vc.id === pt.caseId);
+                            return (
+                              <div key={pt.id} className="p-3 hover:bg-slate-50 flex justify-between items-start">
+                                <div className="space-y-1 min-w-0 pr-2">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[10px] bg-slate-100 text-slate-800 px-1 rounded font-bold">{pt.method}</span>
+                                    <span className="opacity-40 text-[9px]">{getFormatDate(pt.createdAt)}</span>
+                                  </div>
+                                  <p className="text-slate-600 text-[10px] truncate animate-fade-in-down">
+                                    {linkedCase ? `${language === 'fr' ? "Dossier : " : "Case: "}${linkedCase.title}` : (language === 'fr' ? "Paiement Général" : "General Payment")}
+                                  </p>
+                                  {pt.reference && <p className="text-[9px] opacity-40">REF: {pt.reference}</p>}
+                                </div>
+                                <span className="font-bold text-slate-900 shrink-0">
+                                  {pt.currency === "FC" || pt.currency === "CDF" || pt.currency === "CFC" ? `${Number(pt.amount).toLocaleString()} FC` : `$${Number(pt.amount).toLocaleString()} USD`}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex justify-end mt-8 pt-4 border-t border-app-line">
+                <button
+                  onClick={() => {
+                    setViewingPatientPaymentsId(null);
+                    setViewingPatientName("");
+                  }}
+                  className="px-6 py-2.5 bg-app-ink text-app-bg font-mono text-[10px] uppercase tracking-widest hover:opacity-95 transition-opacity cursor-pointer"
+                >
+                  {language === 'fr' ? "Fermer" : "Close"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

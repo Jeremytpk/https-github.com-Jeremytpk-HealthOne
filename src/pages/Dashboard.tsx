@@ -1401,13 +1401,17 @@ const AdminDashboard = ({ t, hospitalId }: any) => {
     return s.status === "ON_VACATION" || s.status === "OFF";
   }).length;
 
+  const todayObj = new Date();
+  const y = todayObj.getFullYear();
+  const m = String(todayObj.getMonth() + 1).padStart(2, '0');
+  const d = String(todayObj.getDate()).padStart(2, '0');
+  const todayDateStr = `${y}-${m}-${d}`;
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const todayName = daysOfWeek[new Date().getDay()];
+  const todayName = daysOfWeek[todayObj.getDay()];
+
   const staffActiveToday = staff.filter(s => {
-    const roleNormalized = getNormalizedRole(s.role);
-    if (roleNormalized === "SYSTEM_ADMIN" || roleNormalized === "SUP_ADMIN") return false;
     const sSchedule = s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-    return sSchedule.includes(todayName) && s.status === "ACTIVE";
+    return sSchedule.includes(todayDateStr) || sSchedule.includes(todayName);
   });
 
   const getPatientStageAndStatus = (p: any) => {
@@ -1459,7 +1463,7 @@ const AdminDashboard = ({ t, hospitalId }: any) => {
   return (
     <div className="space-y-4">
       {/* Analytics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard 
           title={language === 'fr' ? "Revenus (USD / FC)" : "Revenue (USD / FC)"} 
           value={formattedRevenue} 
@@ -1467,17 +1471,6 @@ const AdminDashboard = ({ t, hospitalId }: any) => {
           trend={`${mergedPayments.length} ${language === 'fr' ? "transactions d'achat" : "paid invoices"}`} 
           variant="dark" 
         />
-        
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-28">
-          <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">{t("occupancy")}</p>
-          <p className="text-2xl font-bold">{occupancyPercent}%</p>
-          <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2">
-            <div 
-              style={{ width: `${occupancyPercent}%` }}
-              className="bg-blue-500 h-1.5 rounded-full transition-all duration-1000" 
-            />
-          </div>
-        </div>
 
         <StatCard 
           title={language === 'fr' ? "Personnel" : "Staff Members"} 
