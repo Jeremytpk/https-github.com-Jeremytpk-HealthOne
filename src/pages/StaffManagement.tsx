@@ -7,11 +7,14 @@ import {
   updateDoc, 
   doc, 
   serverTimestamp,
-  addDoc
+  addDoc,
+  setDoc,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useOfflineSync } from "../contexts/OfflineSyncContext";
 import WorkCalendarModal from "../components/WorkCalendarModal";
 import MiniAuditedCalendar from "../components/MiniAuditedCalendar";
 import { 
@@ -22,9 +25,15 @@ import {
   Power, 
   UserPlus, 
   Search,
-  Clock
+  Clock,
+  KeyRound,
+  ShieldAlert,
+  SlidersHorizontal
 } from "lucide-react";
-import { UserRole, UserStatus } from "../lib/utils";
+import { UserRole, UserStatus, getNormalizedRole } from "../lib/utils";
+import { initializeApp, deleteApp } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
+import firebaseConfig from "../../firebase-applet-config.json";
 
 const weekdayShortEn: Record<string, string> = {
   Monday: 'M',
@@ -59,10 +68,13 @@ const weekdayDisplayFr: Record<string, string> = {
 export default function StaffManagement() {
   const { hospitalId, profile } = useAuth();
   const { t, language } = useLanguage();
+  const { isOfflineMode } = useOfflineSync();
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
   const [viewingStaffSchedule, setViewingStaffSchedule] = useState<any | null>(null);
 
   const handleSaveStaffSchedule = async (newSchedule: string[]) => {
@@ -80,20 +92,75 @@ export default function StaffManagement() {
   // New Staff form
   const [newStaffData, setNewStaffData] = useState({
     name: "",
+    username: "",
     email: "",
+    password: "",
     role: "NURSE" as UserRole,
   });
 
   useEffect(() => {
-    if (hospitalId) fetchStaff();
+    if (!hospitalId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const cached = localStorage.getItem(`healthone_cached_staff_${hospitalId}`);
+      if (cached) {
+        setStaff(JSON.parse(cached));
+      }
+    } catch (e) {
+      console.error("Failed to load cached staff:", e);
+    }
+
+    setLoading(true);
+    const unsubscribe = onSnapshot(collection(db, "users"), (snapshot) => {
+      const list = snapshot.docs.map(doc => {
+        const u = doc.data();
+        let resolvedHopId = u.hospitalId || null;
+        if (!resolvedHopId && u.hospital) {
+          if (typeof u.hospital === 'string') resolvedHopId = u.hospital;
+          else if (typeof u.hospital === 'object' && u.hospital.id) resolvedHopId = u.hospital.id;
+        }
+        return { id: doc.id, ...u, resolvedHospitalId: resolvedHopId };
+      }).filter((u: any) => u.resolvedHospitalId === hospitalId);
+
+      setStaff(list);
+      try {
+        localStorage.setItem(`healthone_cached_staff_${hospitalId}`, JSON.stringify(list));
+      } catch (e) {
+        console.error("Failed to cache staff:", e);
+      }
+      setLoading(false);
+    }, (err) => {
+      console.error("Staff subscription failed, falling back to manual fetch:", err);
+      fetchStaff();
+    });
+
+    return () => unsubscribe();
   }, [hospitalId]);
 
   const fetchStaff = async () => {
+    if (!hospitalId) return;
     setLoading(true);
-    const q = query(collection(db, "users"), where("hospitalId", "==", hospitalId));
-    const querySnapshot = await getDocs(q);
-    setStaff(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    setLoading(false);
+    try {
+      const q = query(collection(db, "users"));
+      const querySnapshot = await getDocs(q);
+      const list = querySnapshot.docs.map(doc => {
+        const u = doc.data();
+        let resolvedHopId = u.hospitalId || null;
+        if (!resolvedHopId && u.hospital) {
+          if (typeof u.hospital === 'string') resolvedHopId = u.hospital;
+          else if (typeof u.hospital === 'object' && u.hospital.id) resolvedHopId = u.hospital.id;
+        }
+        return { id: doc.id, ...u, resolvedHospitalId: resolvedHopId };
+      }).filter((u: any) => u.resolvedHospitalId === hospitalId);
+      setStaff(list);
+    } catch (error) {
+      console.error("Error manual fetch of staff:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateStatus = async (userId: string, status: UserStatus) => {
@@ -124,19 +191,71 @@ export default function StaffManagement() {
     e.preventDefault();
     if (!hospitalId) return;
 
+    if (isOfflineMode) {
+      alert(language === 'fr' 
+        ? "La création d'un compte utilisateur réel avec accès de connexion nécessite une connexion Internet active pour s'enregistrer auprès du service d'authentification."
+        : "Creating a live user login account requires an active internet connection to register with the cloud authentication service.");
+      return;
+    }
+
+    if (!newStaffData.name || !newStaffData.username || !newStaffData.email || !newStaffData.password) {
+      alert("Please fill in all required fields (Name, Username, Email, Password).");
+      return;
+    }
+
+    setCreatingUser(true);
+    let secondaryApp;
     try {
-      // In a real system, this would trigger an invite or Auth creation
-      // For this demo, we'll just add the profile
-      await addDoc(collection(db, "users"), {
-        ...newStaffData,
+      // Initialize dynamic secondary app to avoid logging out the current active session
+      secondaryApp = initializeApp(firebaseConfig, "StaffCreationApp");
+      const secondaryAuth = getAuth(secondaryApp);
+
+      const userCredential = await createUserWithEmailAndPassword(
+        secondaryAuth,
+        newStaffData.email.trim(),
+        newStaffData.password.trim()
+      );
+
+      const newUid = userCredential.user.uid;
+
+      // Save user record inside the main Firestore "users" collection
+      await setDoc(doc(db, "users", newUid), {
+        id: newUid,
+        uid: newUid,
+        name: newStaffData.name.trim(),
+        fullName: newStaffData.name.trim(),
+        username: newStaffData.username.toLowerCase().trim(),
+        email: newStaffData.email.trim(),
+        password: newStaffData.password.trim(),
+        role: newStaffData.role,
         hospitalId,
         status: "ACTIVE",
+        schedule: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
         createdAt: serverTimestamp()
       });
+
+      alert(`User Account @${newStaffData.username} successfully registered and configured for your hospital!`);
       setShowAddModal(false);
+      setNewStaffData({
+        name: "",
+        username: "",
+        email: "",
+        password: "",
+        role: "NURSE"
+      });
       fetchStaff();
-    } catch (error) {
-      console.error("Error adding staff:", error);
+    } catch (error: any) {
+      console.error("Error registered new user:", error);
+      alert("Failed to register staff account: " + error.message);
+    } finally {
+      if (secondaryApp) {
+        try {
+          await deleteApp(secondaryApp);
+        } catch (err) {
+          console.error("Error destroying secondary app instance:", err);
+        }
+      }
+      setCreatingUser(false);
     }
   };
 
@@ -150,8 +269,23 @@ export default function StaffManagement() {
     }
   };
 
+  const generateRandomPassword = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#%^&*";
+    let pwd = "";
+    for (let i = 0; i < 12; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewStaffData(p => ({ ...p, password: pwd }));
+  };
+
+  const filteredStaff = staff.filter(s => {
+    const matchesName = (s.fullName || s.name || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === "ALL" || getNormalizedRole(s.role) === getNormalizedRole(roleFilter);
+    return matchesName && matchesRole;
+  });
+
   return (
-    <div className="space-y-6 sm:space-y-8">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-4xl font-serif italic font-bold tracking-tight mb-2 uppercase">{t("staffManagement")}</h1>
@@ -165,100 +299,141 @@ export default function StaffManagement() {
         </button>
       </div>
 
+      {/* Search and Filters */}
+      <div className="bg-white border border-app-line p-4 flex flex-col md:flex-row items-center gap-4 rounded-xl shadow-sm">
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+          <input 
+            type="text" 
+            placeholder={language === 'fr' ? "Rechercher par nom..." : "Search staff by name..."}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 pl-9 pr-4 py-2.5 font-mono text-xs focus:outline-none focus:border-slate-800 transition-colors rounded-lg"
+          />
+        </div>
+        
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <SlidersHorizontal className="w-4 h-4 text-slate-400 shrink-0" />
+          <select 
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-200 px-3 py-2.5 font-mono text-xs focus:outline-none focus:border-slate-800 transition-colors rounded-lg w-full md:w-48 cursor-pointer"
+          >
+            <option value="ALL">{language === 'fr' ? "TOUS LES RÔLES" : "ALL ROLES"}</option>
+            <option value="DOCTOR">{t("doctor") || "Doctor"}</option>
+            <option value="NURSE">{t("nurse") || "Nurse"}</option>
+            <option value="RECEPTIONIST">{t("receptionist") || "Receptionist"}</option>
+            <option value="PHARMACIST">{t("pharmacist") || "Pharmacist"}</option>
+            <option value="CASHIER">{t("cashier") || "Cashiers"}</option>
+            <option value="HR">{t("hr") || "HR Managers"}</option>
+            <option value="ADMIN">{t("admin") || "Administrators"}</option>
+          </select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {staff.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())).map((s) => (
-          <div key={s.id} className="bg-white border border-app-line p-6 relative group overflow-hidden">
-             {/* Background Decoration */}
-            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-              <Users className="w-24 h-24" />
-            </div>
-
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-app-ink text-app-bg flex items-center justify-center font-mono text-sm">
-                  {s.name.charAt(0)}
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg leading-tight">{s.name}</h3>
-                  <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">{t(s.role)}</p>
-                </div>
+        {filteredStaff.length === 0 ? (
+          <div className="col-span-full border border-dashed border-slate-200 rounded-xl p-12 text-center text-slate-400 font-serif italic text-xs">
+            No matching staff members found in this hospital tenant node.
+          </div>
+        ) : (
+          filteredStaff.map((s) => (
+            <div key={s.id} className="bg-white border border-app-line p-6 relative group overflow-hidden rounded-xl shadow-sm hover:shadow-md transition-all">
+               {/* Background Decoration */}
+              <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                <Users className="w-24 h-24" />
               </div>
-              <span className={`text-[9px] px-2 py-0.5 border font-mono uppercase ${getStatusColor(s.status)}`}>
-                {t(s.status)}
-              </span>
-            </div>
 
-            <div className="space-y-3 mb-6">
-              <div className="flex items-center justify-between text-xs font-mono opacity-80 uppercase tracking-wider font-bold">
-                <span className="flex items-center gap-2">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" /> {t("schedules") || "Schedule Availability"}
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-app-ink text-app-bg flex items-center justify-center font-mono text-sm rounded">
+                    {(s.fullName || s.name || "S").charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg leading-tight">{s.fullName || s.name || "Staff Member"}</h3>
+                    <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">{t(s.role)}</p>
+                    {s.username ? (
+                      <p className="text-[9px] font-mono text-slate-400 mt-0.5">@{s.username}</p>
+                    ) : null}
+                  </div>
+                </div>
+                <span className={`text-[9px] px-2 py-0.5 border font-mono uppercase rounded-full ${getStatusColor(s.status)}`}>
+                  {t(s.status)}
                 </span>
-                
-                <button
-                  onClick={() => setViewingStaffSchedule(s)}
-                  title={language === 'fr' ? "Planifier par date" : "Schedule via Calendar"}
-                  className="p-1 px-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-100 rounded transition-colors cursor-pointer flex items-center gap-1 text-[9px] uppercase font-mono tracking-wider font-bold"
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center justify-between text-xs font-mono opacity-80 uppercase tracking-wider font-bold">
+                  <span className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" /> {t("schedules") || "Schedule Availability"}
+                  </span>
+                  
+                  <button
+                    onClick={() => setViewingStaffSchedule(s)}
+                    title={language === 'fr' ? "Planifier par date" : "Schedule via Calendar"}
+                    className="p-1 px-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-100 rounded transition-colors cursor-pointer flex items-center gap-1 text-[9px] uppercase font-mono tracking-wider font-bold"
+                  >
+                    <Calendar className="w-3 h-3" />
+                    {language === 'fr' ? "Calendrier" : "Calendar"}
+                  </button>
+                </div>
+
+                <MiniAuditedCalendar 
+                  schedule={s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']}
+                  onChangeSchedule={async (newSchedule) => {
+                    try {
+                      const docRef = doc(db, "users", s.id);
+                      await updateDoc(docRef, { schedule: newSchedule });
+                      setStaff(prev => prev.map(u => u.id === s.id ? { ...u, schedule: newSchedule } : u));
+                    } catch (err) {
+                      console.error("Failed to update staff schedule:", err);
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center gap-1 border-t border-app-line pt-4">
+                <button 
+                  onClick={() => updateStatus(s.id, 'ACTIVE')}
+                  title={t("setActive")}
+                  className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-green-50 transition-colors cursor-pointer"
                 >
-                  <Calendar className="w-3 h-3" />
-                  {language === 'fr' ? "Calendrier" : "Calendar"}
+                  <Power className="w-3 h-3 text-green-600" />
+                </button>
+                <button 
+                  onClick={() => updateStatus(s.id, 'ON_VACATION')}
+                  title={t("onVacation")}
+                  className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-blue-50 transition-colors cursor-pointer"
+                >
+                  <Plane className="w-3 h-3 text-blue-600" />
+                </button>
+                <button 
+                  onClick={() => updateStatus(s.id, 'OFF')}
+                  title={t("offDuty")}
+                  className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-orange-50 transition-colors cursor-pointer"
+                >
+                  <Calendar className="w-3 h-3 text-orange-600" />
+                </button>
+                <button 
+                  onClick={() => updateStatus(s.id, 'TERMINATED')}
+                  title={t("terminateAction")}
+                  className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-red-50 transition-colors cursor-pointer"
+                >
+                  <UserMinus className="w-3 h-3 text-red-600" />
                 </button>
               </div>
-
-              <MiniAuditedCalendar 
-                schedule={s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']}
-                onChangeSchedule={async (newSchedule) => {
-                  try {
-                    const docRef = doc(db, "users", s.id);
-                    await updateDoc(docRef, { schedule: newSchedule });
-                    setStaff(prev => prev.map(u => u.id === s.id ? { ...u, schedule: newSchedule } : u));
-                  } catch (err) {
-                    console.error("Failed to update staff schedule:", err);
-                  }
-                }}
-              />
             </div>
-
-            <div className="flex items-center gap-1 border-t border-app-line pt-4">
-              <button 
-                onClick={() => updateStatus(s.id, 'ACTIVE')}
-                title={t("setActive")}
-                className="flex-1 h-8 border border-app-line flex items-center justify-center hover:bg-green-50 transition-colors"
-              >
-                <Power className="w-3 h-3 text-green-600" />
-              </button>
-              <button 
-                onClick={() => updateStatus(s.id, 'ON_VACATION')}
-                title={t("onVacation")}
-                className="flex-1 h-8 border border-app-line flex items-center justify-center hover:bg-blue-50 transition-colors"
-              >
-                <Plane className="w-3 h-3 text-blue-600" />
-              </button>
-              <button 
-                onClick={() => updateStatus(s.id, 'OFF')}
-                title={t("offDuty")}
-                className="flex-1 h-8 border border-app-line flex items-center justify-center hover:bg-orange-50 transition-colors"
-              >
-                <Calendar className="w-3 h-3 text-orange-600" />
-              </button>
-              <button 
-                onClick={() => updateStatus(s.id, 'TERMINATED')}
-                title={t("terminateAction")}
-                className="flex-1 h-8 border border-app-line flex items-center justify-center hover:bg-red-50 transition-colors"
-              >
-                <UserMinus className="w-3 h-3 text-red-600" />
-              </button>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Add Staff Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="bg-app-bg border border-app-line w-full max-w-md my-auto p-6 sm:p-8 relative shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-app-bg border border-app-line w-full max-w-md my-auto p-6 sm:p-8 relative shadow-2xl animate-in zoom-in-95 duration-200 rounded-xl">
             <h2 className="text-xl sm:text-2xl font-serif italic font-bold mb-6 border-b border-app-line pb-2">{t("staff")} [REG_FORM]</h2>
             
-            <form onSubmit={handleAddStaff} className="space-y-5">
+            <form onSubmit={handleAddStaff} className="space-y-4">
               <div>
                 <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">{t("fullName")}</label>
                 <input 
@@ -266,9 +441,22 @@ export default function StaffManagement() {
                   required 
                   value={newStaffData.name}
                   onChange={(e) => setNewStaffData({...newStaffData, name: e.target.value})}
-                  className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
+                  className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg"
                 />
               </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">Username / Nom d'utilisateur</label>
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="e.g. jdoe"
+                  value={newStaffData.username}
+                  onChange={(e) => setNewStaffData({...newStaffData, username: e.target.value})}
+                  className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg"
+                />
+              </div>
+
               <div>
                 <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">{t("email")}</label>
                 <input 
@@ -276,15 +464,40 @@ export default function StaffManagement() {
                   required 
                   value={newStaffData.email}
                   onChange={(e) => setNewStaffData({...newStaffData, email: e.target.value})}
-                  className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
+                  className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg"
                 />
               </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-[10px] uppercase font-mono opacity-50">Password / Mot de passe</label>
+                  <button 
+                    type="button" 
+                    onClick={generateRandomPassword}
+                    className="text-[9px] font-mono text-blue-600 hover:underline cursor-pointer"
+                  >
+                    Generate Strong Password
+                  </button>
+                </div>
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Enter password..."
+                    value={newStaffData.password}
+                    onChange={(e) => setNewStaffData({...newStaffData, password: e.target.value})}
+                    className="w-full bg-white border border-app-line pl-10 pr-4 py-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg bg-slate-50/50"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">{t("designatedRole")}</label>
                 <select 
                   value={newStaffData.role}
                   onChange={(e) => setNewStaffData({...newStaffData, role: e.target.value as UserRole})}
-                  className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
+                  className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg cursor-pointer"
                 >
                   <option value="DOCTOR">{t("doctor")}</option>
                   <option value="NURSE">{t("nurse")}</option>
@@ -293,24 +506,31 @@ export default function StaffManagement() {
                   <option value="CASHIER">{t("cashier")}</option>
                   <option value="HR">{t("hr")}</option>
                   <option value="ADMIN">{t("admin")}</option>
-                  <option value="PHARMACIE">{t("pharmacie")}</option>
-                  <option value="INVENTAIRE">{t("inventaire")}</option>
                 </select>
               </div>
 
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 pt-4 border-t border-app-line">
                 <button 
                   type="button" 
+                  disabled={creatingUser}
                   onClick={() => setShowAddModal(false)}
-                  className="px-6 py-2 border border-app-line font-mono text-[10px] uppercase hover:bg-gray-100 transition-colors"
+                  className="px-6 py-2 border border-app-line font-mono text-[10px] uppercase hover:bg-gray-100 transition-colors rounded-lg cursor-pointer flex items-center justify-center"
                 >
                   {t("halt")}
                 </button>
                 <button 
                   type="submit" 
-                  className="px-8 py-2 bg-app-ink text-app-bg font-mono text-[10px] uppercase hover:opacity-90 transition-opacity"
+                  disabled={creatingUser}
+                  className="px-8 py-2 bg-app-ink text-app-bg font-mono text-[10px] uppercase hover:opacity-90 transition-opacity rounded-lg cursor-pointer flex items-center justify-center gap-2"
                 >
-                  {t("accreditStaff")}
+                  {creatingUser ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Registering...
+                    </>
+                  ) : (
+                    t("accreditStaff")
+                  )}
                 </button>
               </div>
             </form>

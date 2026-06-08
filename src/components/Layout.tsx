@@ -59,6 +59,9 @@ const Layout: React.FC = () => {
   const filteredNav = navItems.filter(item => {
     if (!profile) return false;
     const userRole = getNormalizedRole(profile.role);
+    if (item.path === "/system-admin") {
+      return userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+    }
     if (userRole === 'ADMIN' || userRole === 'SYSTEM_ADMIN' || userRole === 'SUP_ADMIN') return true;
     if (!item.roles) return true;
     return item.roles.includes(userRole);

@@ -25,7 +25,7 @@ import {
   UserPlus,
   Phone
 } from "lucide-react";
-import { UserRole } from "../lib/utils";
+import { UserRole, getNormalizedRole } from "../lib/utils";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import firebaseConfig from "../../firebase-applet-config.json";
@@ -33,6 +33,20 @@ import firebaseConfig from "../../firebase-applet-config.json";
 export default function SystemAdmin() {
   const { profile } = useAuth();
   const { t } = useLanguage();
+
+  const userRole = getNormalizedRole(profile?.role);
+  if (userRole !== "SYSTEM_ADMIN" && userRole !== "SUP_ADMIN") {
+    return (
+      <div className="p-8 text-center min-h-[50vh] flex flex-col justify-center items-center animate-fade-in">
+        <ShieldAlert className="w-16 h-16 text-rose-600 mb-4 animate-bounce" />
+        <h1 className="text-2xl font-serif italic font-bold text-slate-900 mb-2">ACCESS_DENIED</h1>
+        <p className="text-xs font-mono text-slate-500 uppercase tracking-widest max-w-sm">
+          Only the super administrator (sup_admin) has authority to provision hospital nodes or manage system infrastructure.
+        </p>
+      </div>
+    );
+  }
+
   const [hospitals, setHospitals] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [loadingHospitals, setLoadingHospitals] = useState(true);

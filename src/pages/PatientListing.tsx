@@ -22,12 +22,20 @@ import { getNormalizedRole } from "../lib/utils";
 export default function PatientListing() {
   const { hospitalId, profile } = useAuth();
   const { t, language } = useLanguage();
-  const { isOfflineMode, addOfflineDoc, getQueuedItemsForCollection } = useOfflineSync();
+  const { isOfflineMode, addOfflineDoc, getQueuedItemsForCollection, removeQueuedItem } = useOfflineSync();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
-  const [patients, setPatients] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [patients, setPatients] = useState<any[]>(() => {
+    if (!hospitalId) return [];
+    try {
+      const cached = localStorage.getItem(`healthone_cached_all_patients_${hospitalId}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(!isOfflineMode && patients.length === 0);
   const [showRegModal, setShowRegModal] = useState(false);
 
   // Deletion State
@@ -64,7 +72,14 @@ export default function PatientListing() {
     if (!patientToDelete) return;
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, "patients", patientToDelete.id));
+      if (patientToDelete.id.startsWith("offline_")) {
+        removeQueuedItem(patientToDelete.id);
+      } else if (isOfflineMode) {
+        setIsDeleting(false);
+        return;
+      } else {
+        await deleteDoc(doc(db, "patients", patientToDelete.id));
+      }
       setShowDeleteConfirm(false);
       setPatientToDelete(null);
     } catch (err) {
@@ -80,32 +95,55 @@ export default function PatientListing() {
   useEffect(() => {
     let unsubscribe: () => void = () => {};
 
-    if (hospitalId) {
-      const q = query(
-        collection(db, "patients"), 
-        where("hospitalId", "==", hospitalId)
-      );
-
-      unsubscribe = onSnapshot(q, (snapshot) => {
-        const patientData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Sort in memory to Avoid missing index error
-        patientData.sort((a: any, b: any) => {
-          const dateA = a.createdAt?.seconds || 0;
-          const dateB = b.createdAt?.seconds || 0;
-          return dateB - dateA;
-        });
-        setPatients(patientData);
-        setLoading(false);
-      }, (error) => {
-        console.error("Error fetching patients:", error);
-        setLoading(false);
-      });
-    } else {
+    if (!hospitalId) {
       setLoading(false);
+      return;
     }
 
+    // Load from cache initially
+    try {
+      const cachedPatients = localStorage.getItem(`healthone_cached_all_patients_${hospitalId}`);
+      if (cachedPatients) {
+        setPatients(JSON.parse(cachedPatients));
+      }
+    } catch (e) {
+      console.error("Failed to load cached patients:", e);
+    }
+
+    if (isOfflineMode) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    const q = query(
+      collection(db, "patients"), 
+      where("hospitalId", "==", hospitalId)
+    );
+
+    unsubscribe = onSnapshot(q, (snapshot) => {
+      const patientData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sort in memory to Avoid missing index error
+      patientData.sort((a: any, b: any) => {
+        const dateA = a.createdAt?.seconds || 0;
+        const dateB = b.createdAt?.seconds || 0;
+        return dateB - dateA;
+      });
+      setPatients(patientData);
+      try {
+        localStorage.setItem(`healthone_cached_all_patients_${hospitalId}`, JSON.stringify(patientData));
+      } catch (e) {
+        console.error("Failed to save patient cache:", e);
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching patients:", error);
+      setLoading(false);
+    });
+
     return () => unsubscribe();
-  }, [hospitalId]);
+  }, [hospitalId, isOfflineMode]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,6 +217,22 @@ export default function PatientListing() {
 
   return (
     <div className="space-y-4">
+      {isOfflineMode && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-center justify-between shadow-sm animate-pulse">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 bg-amber-500 rounded-full inline-block animate-ping" />
+            <span>
+              {language === 'fr' 
+                ? "Mode hors ligne actif. Nouvelles inscriptions enregistrées localement et prêtes pour synchro." 
+                : "Offline mode active. New registrations are saved locally and queued for synchronization."}
+            </span>
+          </div>
+          <span className="text-[10px] bg-amber-100 px-2 py-0.5 rounded font-mono font-bold uppercase shrink-0">
+            {language === 'fr' ? "HORS LIGNE" : "STANDALONE"}
+          </span>
+        </div>
+      )}
+
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -295,8 +349,17 @@ export default function PatientListing() {
                               setPatientToDelete(p);
                               setShowDeleteConfirm(true);
                             }}
-                            className="w-7 h-7 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-all border border-transparent hover:border-rose-100 cursor-pointer"
-                            title={t("deletePatient")}
+                            disabled={isOfflineMode && !p.id.startsWith("offline_")}
+                            className={`w-7 h-7 rounded flex items-center justify-center transition-all border border-transparent ${
+                              isOfflineMode && !p.id.startsWith("offline_")
+                                ? "opacity-35 cursor-not-allowed text-slate-300"
+                                : "hover:bg-rose-50 text-slate-400 hover:text-rose-600 hover:border-rose-100 cursor-pointer"
+                            }`}
+                            title={
+                              isOfflineMode && !p.id.startsWith("offline_")
+                                ? (language === 'fr' ? "Suppression indisponible hors ligne" : "Deletion unavailable offline")
+                                : t("deletePatient")
+                            }
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

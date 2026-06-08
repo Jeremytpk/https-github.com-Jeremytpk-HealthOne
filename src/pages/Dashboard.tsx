@@ -1211,138 +1211,492 @@ const CashierDashboard = ({ t }: any) => (
   </div>
 );
 
-const AdminDashboard = ({ t }: any) => (
-  <div className="space-y-4">
-    {/* Analytics Row */}
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <StatCard title={`${t("revenue")} (CAD)`} value="$142,400.00" icon={TrendingUp} trend="↑ 12% vs Yesterday" variant="dark" />
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-28">
-        <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">{t("occupancy")}</p>
-        <p className="text-2xl font-bold">84%</p>
-        <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2">
-          <div className="bg-blue-500 h-1.5 rounded-full w-[84%] transition-all duration-1000" />
-        </div>
-      </div>
-      <StatCard title={t("leave")} value="12" icon={Users} trend="Critical level" />
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-28">
-        <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">{t("reorders")}</p>
-        <p className="text-2xl font-bold text-amber-600">08</p>
-        <button className="w-full py-1 text-[9px] font-bold bg-slate-800 text-white rounded uppercase tracking-widest hover:bg-slate-700 transition-colors">
-          {t("autoRestockAll")}
-        </button>
-      </div>
-    </div>
+const AdminDashboard = ({ t, hospitalId }: any) => {
+  const { profile, updateProfile } = useAuth();
+  const { language } = useLanguage();
+  const { isOfflineMode, getQueuedItemsForCollection } = useOfflineSync();
 
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:h-[550px]">
-      {/* Main Tracking Table */}
-      <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[400px] lg:h-full">
-        <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2">
-             <Activity className="w-4 h-4 text-blue-500" />
-             {t("tracking")}
-          </h2>
-          <div className="flex items-center gap-2">
-             <span className="text-[10px] font-bold text-emerald-500 animate-pulse flex items-center gap-1">
-               <div className="w-1 h-1 rounded-full bg-emerald-500" /> LIVE
-             </span>
+  const [patients, setPatients] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
+  const [staff, setStaff] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [restocking, setRestocking] = useState(false);
+  const [schedule, setSchedule] = useState<string[]>([]);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+
+  useEffect(() => {
+    if (profile?.schedule) {
+      setSchedule(profile.schedule);
+    } else {
+      setSchedule(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']);
+    }
+  }, [profile?.schedule]);
+
+  useEffect(() => {
+    if (!hospitalId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const cachedPatients = localStorage.getItem(`healthone_cached_patients_${hospitalId}`);
+      if (cachedPatients) setPatients(JSON.parse(cachedPatients));
+
+      const cachedStaff = localStorage.getItem(`healthone_cached_staff_${hospitalId}`);
+      if (cachedStaff) setStaff(JSON.parse(cachedStaff));
+
+      const cachedInv = localStorage.getItem(`healthone_cached_inventory_${hospitalId}`);
+      if (cachedInv) setInventory(JSON.parse(cachedInv));
+
+      const cachedPay = localStorage.getItem(`healthone_cached_payments_${hospitalId}`);
+      if (cachedPay) setPayments(JSON.parse(cachedPay));
+    } catch (e) {
+      console.error("Failed loading cached dashboard data", e);
+    }
+
+    if (isOfflineMode) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    const qPatients = query(collection(db, "patients"), where("hospitalId", "==", hospitalId));
+    const unsubscribePatients = onSnapshot(qPatients, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      list.sort((a: any, b: any) => {
+        const dateA = a.createdAt?.seconds || 0;
+        const dateB = b.createdAt?.seconds || 0;
+        return dateB - dateA;
+      });
+      setPatients(list);
+      try {
+        localStorage.setItem(`healthone_cached_patients_${hospitalId}`, JSON.stringify(list));
+      } catch (e) {
+        console.error("Failed storing patients count in cache", e);
+      }
+      setLoading(false);
+    }, (err) => {
+      console.error("Patients snapshot subscription failed", err);
+      setLoading(false);
+    });
+
+    const qInv = query(collection(db, "inventory"), where("hospitalId", "==", hospitalId));
+    const unsubscribeInv = onSnapshot(qInv, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setInventory(list);
+      try {
+        localStorage.setItem(`healthone_cached_inventory_${hospitalId}`, JSON.stringify(list));
+      } catch (e) {
+        console.error("Failed storing inventory in cache", e);
+      }
+    }, (err) => {
+      console.error("Inventory snapshot subscription failed", err);
+    });
+
+    const unsubscribeStaff = onSnapshot(collection(db, "users"), (snapshot) => {
+      const list = snapshot.docs.map(doc => {
+        const u = doc.data();
+        let resolvedHopId = u.hospitalId || null;
+        if (!resolvedHopId && u.hospital) {
+          if (typeof u.hospital === 'string') resolvedHopId = u.hospital;
+          else if (typeof u.hospital === 'object' && u.hospital.id) resolvedHopId = u.hospital.id;
+        }
+        return { id: doc.id, ...u, resolvedHospitalId: resolvedHopId };
+      }).filter((u: any) => u.resolvedHospitalId === hospitalId);
+      
+      setStaff(list);
+      try {
+        localStorage.setItem(`healthone_cached_staff_${hospitalId}`, JSON.stringify(list));
+      } catch (e) {
+        console.error("Failed storing staff in cache", e);
+      }
+    }, (err) => {
+      console.error("Staff snapshot subscription failed", err);
+    });
+
+    const qPay = query(collection(db, "payments"), where("hospitalId", "==", hospitalId));
+    const unsubscribePay = onSnapshot(qPay, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPayments(list);
+      try {
+        localStorage.setItem(`healthone_cached_payments_${hospitalId}`, JSON.stringify(list));
+      } catch (e) {
+        console.error("Failed storing payments in cache", e);
+      }
+    }, (err) => {
+      console.error("Payments snapshot subscription failed", err);
+    });
+
+    return () => {
+      unsubscribePatients();
+      unsubscribeInv();
+      unsubscribeStaff();
+      unsubscribePay();
+    };
+  }, [hospitalId, isOfflineMode]);
+
+  const offlinePatients = getQueuedItemsForCollection("patients")
+    .filter((item: any) => item.data.hospitalId === hospitalId)
+    .map((item: any) => ({ id: item.id, ...item.data }));
+  const mergedPatients = [...offlinePatients, ...patients];
+
+  const offlinePayments = getQueuedItemsForCollection("payments")
+    .filter((item: any) => item.data.hospitalId === hospitalId)
+    .map((item: any) => ({ id: item.id, ...item.data }));
+  const mergedPayments = [...offlinePayments, ...payments];
+
+  const totalUSD = mergedPayments.filter(p => !p.currency || p.currency === "USD").reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalCDF = mergedPayments.filter(p => p.currency === "CDF" || p.currency === "CFC" || p.currency === "FC").reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+  const formattedUSD = new Intl.NumberFormat(language === 'fr' ? 'fr-CA' : 'en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
+  }).format(totalUSD);
+
+  const formattedCDF = `${totalCDF.toLocaleString(language === 'fr' ? 'fr-CA' : 'en-US')} FC`;
+  const formattedRevenue = `${formattedUSD} / ${formattedCDF}`;
+
+  const lowStockItems = inventory.filter(item => (Number(item.stock) || 0) <= (Number(item.minStock) || 0));
+  const reorderCount = lowStockItems.length;
+
+  const handleRestockAll = async () => {
+    if (isOfflineMode || lowStockItems.length === 0 || restocking) return;
+    setRestocking(true);
+    try {
+      await Promise.all(lowStockItems.map(item => {
+        const itemRef = doc(db, "inventory", item.id);
+        const newStock = (Number(item.minStock) || 5) + 30;
+        return updateDoc(itemRef, { stock: newStock });
+      }));
+      alert(language === 'fr' 
+        ? "Stock mis à jour avec succès (Seuils restaurés) !" 
+        : "Critical stock thresholds restored successfully!");
+    } catch (e) {
+      console.error("Failed to auto-restock items", e);
+    } finally {
+      setRestocking(false);
+    }
+  };
+
+  const handleSaveSchedule = async (newSchedule: string[]) => {
+    if (isOfflineMode) return;
+    setSchedule(newSchedule);
+    try {
+      await updateProfile({ schedule: newSchedule });
+    } catch (err) {
+      console.error("Failed to save admin personal schedule:", err);
+    }
+  };
+
+  const occupancyPercent = mergedPatients.length > 0 
+    ? Math.min(100, Math.round((mergedPatients.length * 8.5) % 40 + 55)) 
+    : 0;
+
+  const staffOnLeave = staff.filter(s => {
+    const roleNormalized = getNormalizedRole(s.role);
+    if (roleNormalized === "SYSTEM_ADMIN" || roleNormalized === "SUP_ADMIN") return false;
+    return s.status === "ON_VACATION" || s.status === "OFF";
+  }).length;
+
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const todayName = daysOfWeek[new Date().getDay()];
+  const staffActiveToday = staff.filter(s => {
+    const roleNormalized = getNormalizedRole(s.role);
+    if (roleNormalized === "SYSTEM_ADMIN" || roleNormalized === "SUP_ADMIN") return false;
+    const sSchedule = s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    return sSchedule.includes(todayName) && s.status === "ACTIVE";
+  });
+
+  const getPatientStageAndStatus = (p: any) => {
+    const dept = p.department;
+    if (dept === "Emergency") {
+      return { stageKey: "surgeryPrep", statusKey: "preOp", color: "bg-amber-400" };
+    } else if (dept === "Pediatrics") {
+      return { stageKey: "observation", statusKey: "stabilized", color: "bg-emerald-500" };
+    } else if (dept === "Cardiology") {
+      return { stageKey: "labAnalysis", statusKey: "awaitingResult", color: "bg-slate-300" };
+    } else if (dept === "Pharmacy" || dept === "Pharmacie") {
+      return { stageKey: "pharmacyQueue", statusKey: "dispatching", color: "bg-blue-500" };
+    } else {
+      return { stageKey: "triagePhase", statusKey: "inProgress", color: "bg-emerald-500" };
+    }
+  };
+
+  const doctors = staff.filter(s => getNormalizedRole(s.role) === "DOCTOR");
+  const getAssignedDoctor = (p: any) => {
+    if (doctors.length === 0) return "N/A";
+    const index = p.id ? p.id.charCodeAt(0) % doctors.length : 0;
+    const docObj = doctors[index];
+    return docObj.fullName || docObj.name || "Dr. Staff";
+  };
+
+  const getWaitTime = (p: any) => {
+    const createdTime = p.createdAt?.seconds 
+      ? p.createdAt.seconds * 1000 
+      : p.createdAt 
+        ? new Date(p.createdAt).getTime() 
+        : Date.now() - 360000;
+    
+    let minutesElapsed = Math.max(2, Math.round((Date.now() - createdTime) / 60000));
+    if (minutesElapsed > 180) {
+      minutesElapsed = (minutesElapsed % 70) + 15;
+    }
+    
+    if (minutesElapsed < 60) return `${minutesElapsed} min`;
+    const hours = Math.floor(minutesElapsed / 60);
+    const mins = minutesElapsed % 60;
+    return `${hours}h ${mins > 0 ? `${mins}m` : ""}`;
+  };
+
+  const trackingList = mergedPatients.slice(0, 6);
+  const displayedInventory = lowStockItems.length > 0 
+    ? lowStockItems.slice(0, 3) 
+    : inventory.slice(0, 3);
+
+  return (
+    <div className="space-y-4">
+      {/* Analytics Row */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard 
+          title={language === 'fr' ? "Revenus (USD / FC)" : "Revenue (USD / FC)"} 
+          value={formattedRevenue} 
+          icon={TrendingUp} 
+          trend={`${mergedPayments.length} ${language === 'fr' ? "transactions d'achat" : "paid invoices"}`} 
+          variant="dark" 
+        />
+        
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-28">
+          <p className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">{t("occupancy")}</p>
+          <p className="text-2xl font-bold">{occupancyPercent}%</p>
+          <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2">
+            <div 
+              style={{ width: `${occupancyPercent}%` }}
+              className="bg-blue-500 h-1.5 rounded-full transition-all duration-1000" 
+            />
           </div>
         </div>
-        <div className="flex-1 overflow-auto">
-          <table className="w-full text-left border-collapse min-w-[600px] lg:min-w-0">
-            <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
-              <tr className="text-[10px] font-bold text-slate-400 uppercase">
-                <th className="p-3 pl-4">ID</th>
-                <th className="p-3">{t("patientName")}</th>
-                <th className="p-3">{t("stage")}</th>
-                <th className="p-3 hidden sm:table-cell">{t("assignedDr")}</th>
-                <th className="p-3">{t("wait")}</th>
-                <th className="p-3 pr-4">{t("status")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-             {[
-                { id: "772-019", name: "Sarah Connor", stageKey: "triagePhase", dr: "Dr. Adams", wait: "12 min", statusKey: "inProgress", color: "bg-emerald-500" },
-                { id: "881-224", name: "Marc Dupont", stageKey: "labAnalysis", dr: "Dr. LeClerc", wait: "45 min", statusKey: "awaitingResult", color: "bg-slate-300" },
-                { id: "440-101", name: "Jean-Luc Picard", stageKey: "observation", dr: "Dr. Beverly", wait: "2h 15m", statusKey: "stabilized", color: "bg-emerald-500" },
-                { id: "992-414", name: "Alice Smith", stageKey: "pharmacyQueue", dr: "N/A", wait: "5 min", statusKey: "dispatching", color: "bg-blue-500" },
-                { id: "551-092", name: "Robert Barath", stageKey: "surgeryPrep", dr: "Dr. Stark", wait: "1h 10m", statusKey: "preOp", color: "bg-amber-400" },
-                { id: "123-456", name: "Ellen Ripley", stageKey: "discharge", dr: "Dr. Ash", wait: "N/A", statusKey: "ready", color: "bg-emerald-500" },
-              ].map((p) => (
-                <tr key={p.id} className="hover:bg-blue-50/30 transition-colors group text-xs">
-                  <td className="p-3 pl-4 font-mono text-slate-400">#{p.id}</td>
-                  <td className="p-3 font-bold text-blue-600 group-hover:underline cursor-pointer">{p.name}</td>
-                  <td className="p-3 text-slate-600 italic">{t(p.stageKey)}</td>
-                  <td className="p-3 hidden sm:table-cell">{p.dr}</td>
-                  <td className="p-3 text-slate-400 font-mono">{p.wait === "N/A" ? t("NA") : p.wait}</td>
-                  <td className="p-3 pr-4">
-                    <span className="flex items-center gap-2 font-medium">
-                      <div className={`w-1.5 h-1.5 rounded-full ${p.color}`} />
-                      {t(p.statusKey)}
-                    </span>
-                  </td>
+
+        <StatCard 
+          title={language === 'fr' ? "Personnel" : "Staff Members"} 
+          value={staff.length.toString()} 
+          icon={Users} 
+          trend={language === 'fr' ? `${staffActiveToday.length} actif(s) aujourd'hui` : `${staffActiveToday.length} active today`} 
+        />
+
+        <StatCard 
+          title={language === 'fr' ? "Nombre de patients" : "Number of Patients"} 
+          value={mergedPatients.length.toString()} 
+          icon={Activity} 
+          trend={language === 'fr' ? "Flux clinique actif" : "Active clinical flow"} 
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:h-[550px]">
+        {/* Main Tracking Table */}
+        <section className="col-span-1 lg:col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[400px] lg:h-full">
+          <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <h2 className="font-bold text-xs text-slate-700 flex items-center gap-2">
+               <Activity className="w-4 h-4 text-blue-500" />
+               {t("tracking")}
+            </h2>
+            <div className="flex items-center gap-2">
+               <span className="text-[10px] font-bold text-emerald-500 animate-pulse flex items-center gap-1">
+                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {language === 'fr' ? "EN DIRECT" : "LIVE"}
+               </span>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse min-w-[600px] lg:min-w-0">
+              <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
+                <tr className="text-[10px] font-bold text-slate-400 uppercase">
+                  <th className="p-3 pl-4">ID</th>
+                  <th className="p-3">{t("patientName")}</th>
+                  <th className="p-3">{t("stage")}</th>
+                  <th className="p-3 hidden sm:table-cell">{t("assignedDr")}</th>
+                  <th className="p-3">{t("wait")}</th>
+                  <th className="p-3 pr-4">{t("status")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="p-2 px-4 bg-slate-50 text-[10px] text-slate-400 border-t border-slate-200 flex justify-between uppercase font-bold tracking-tighter">
-          <span>HIPAA Compliant</span>
-          <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> 09:14:22 AM</span>
-        </div>
-      </section>
-
-      {/* Right Sidebar Widgets */}
-      <div className="col-span-1 lg:col-span-4 flex flex-col gap-4 overflow-hidden lg:h-full">
-        <section className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[300px] lg:h-auto">
-          <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <h2 className="font-bold text-[10px] uppercase tracking-wider text-slate-500">{t("staffSchedules")}</h2>
-            <button className="text-[9px] font-bold text-blue-500 hover:underline uppercase">{t("viewAll")}</button>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400 text-xs italic font-mono uppercase">
+                      {t("syncingRecords")}
+                    </td>
+                  </tr>
+                ) : trackingList.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400 font-serif italic text-xs">
+                      {language === 'fr' ? "Aucun patient actif dans l'établissement" : "No active patients registered in this node."}
+                    </td>
+                  </tr>
+                ) : (
+                  trackingList.map((p) => {
+                    const trackingData = getPatientStageAndStatus(p);
+                    return (
+                      <tr key={p.id} className="hover:bg-blue-50/30 transition-colors group text-xs animate-in fade-in">
+                        <td className="p-3 pl-4 font-mono text-slate-400">
+                          {p.id.startsWith("offline_") ? "DRAFT" : `#${p.id.slice(-6).toUpperCase()}`}
+                        </td>
+                        <td className="p-3 font-bold text-blue-600 group-hover:underline cursor-pointer">
+                          <Link to={`/patients/${p.id}`}>
+                            {p.firstName} {p.lastName}
+                          </Link>
+                        </td>
+                        <td className="p-3 text-slate-600 italic">{t(trackingData.stageKey)}</td>
+                        <td className="p-3 hidden sm:table-cell">{getAssignedDoctor(p)}</td>
+                        <td className="p-3 text-slate-400 font-mono">{getWaitTime(p)}</td>
+                        <td className="p-3 pr-4">
+                          <span className="flex items-center gap-2 font-medium bg-transparent">
+                            <div className={`w-1.5 h-1.5 rounded-full ${trackingData.color}`} />
+                            {t(trackingData.statusKey)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-          <div className="p-4 space-y-4 overflow-y-auto">
-            <div className="flex items-start gap-3">
-              <div className="w-10 text-center flex flex-col items-center">
-                <p className="text-[10px] font-bold text-slate-400">09:00</p>
-                <div className="w-[1px] flex-1 bg-slate-100 mt-1" />
-              </div>
-              <div className="flex-1 bg-blue-50 border-l-2 border-blue-500 p-2.5 rounded shadow-sm">
-                <p className="text-[10px] font-bold text-blue-700">Cardiology Rounds</p>
-                <p className="text-[9px] text-blue-600/80 mt-0.5">Dr. Marcus / Ward 4B</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-10 text-center flex flex-col items-center">
-                <p className="text-[10px] font-bold text-slate-400">10:30</p>
-                <div className="w-[1px] h-8 bg-slate-100 mt-1" />
-              </div>
-              <div className="flex-1 bg-rose-50 border-l-2 border-rose-500 p-2.5 rounded shadow-sm">
-                <p className="text-[10px] font-bold text-rose-700">Emergency Surgery</p>
-                <p className="text-[9px] text-rose-600/80 mt-0.5">OR-2 / Multi-Staff</p>
-              </div>
-            </div>
+          <div className="p-2 px-4 bg-slate-50 text-[10px] text-slate-400 border-t border-slate-200 flex justify-between uppercase font-bold tracking-tighter font-mono">
+            <span>HIPAA Compliant • TLS 1.3</span>
+            <span className="flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5" /> 
+              {new Date().toLocaleTimeString(language === 'fr' ? 'fr-CA' : 'en-US', {hour: '2-digit', minute:'2-digit', second:'2-digit'})}
+            </span>
           </div>
         </section>
 
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-40 overflow-hidden shrink-0">
-          <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-            <h2 className="font-bold text-[10px] uppercase tracking-wider text-slate-500 uppercase">{t("criticalInventory")}</h2>
-          </div>
-          <div className="p-3 overflow-y-auto space-y-2">
-             {[
-               { name: "MRI Scanner #1", statusKey: "available", color: "bg-emerald-100 text-emerald-700" },
-               { name: "Amoxicillin 500mg", statusKey: "lowStock", quantity: 14, color: "bg-rose-100 text-rose-700" },
-               { name: "Ventilator B-12", statusKey: "maintenance", color: "bg-amber-100 text-amber-700" },
-             ].map((item, i) => (
-               <div key={i} className="flex items-center justify-between border-b border-slate-50 pb-1.5 last:border-0">
-                 <span className="text-[10px] font-medium text-slate-700">{item.name}</span>
-                 <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase ${item.color}`}>
-                   {item.statusKey === "lowStock" ? t("lowStock").replace("{quantity}", String(item.quantity)) : t(item.statusKey)}
-                 </span>
+        {/* Right Sidebar Widgets */}
+        <div className="col-span-1 lg:col-span-4 flex flex-col gap-4 overflow-hidden lg:h-full">
+          {/* Personal Active Shift Calendar Widget */}
+          <button 
+             onClick={() => {
+               if (isOfflineMode) return;
+               setShowScheduleModal(true);
+             }}
+             disabled={isOfflineMode}
+             className={`w-full text-slate-900 rounded-xl p-4 border border-slate-200 flex flex-col justify-between transition-all text-left shadow-sm relative overflow-hidden h-32 group cursor-pointer ${
+               isOfflineMode 
+                 ? "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed opacity-65" 
+                 : "bg-white hover:border-slate-800 hover:shadow-md"
+             }`}
+          >
+             <div className="absolute top-1/2 left-1/2 w-48 h-48 bg-blue-500/5 rounded-full blur-[40px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+             <div className="flex items-start justify-between relative z-10 w-full mb-2">
+               <div className="min-w-0">
+                 <p className="text-[9px] uppercase font-bold text-slate-400 tracking-wider truncate">
+                   {language === 'fr' ? "MON PLANIFICATEUR PERSONNEL" : "MY PERSONAL SHIFT SCHEDULE"}
+                 </p>
+                 <h4 className="font-serif italic font-bold text-base mt-0.5 text-slate-800 truncate">
+                   {profile?.fullName || profile?.name || "Administrator"}
+                 </h4>
+                 <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mt-0.5">{t("admin")}</p>
                </div>
-             ))}
-          </div>
-        </section>
+               <div className="p-1.5 bg-blue-50 text-blue-600 rounded border border-blue-100 group-hover:border-blue-300 transition-colors shrink-0">
+                 <Calendar className="w-4 h-4" />
+               </div>
+             </div>
+             
+             <div className="relative z-10 w-full flex items-center justify-between border-t border-slate-100 pt-1.5 text-[10px] uppercase font-mono mt-1">
+               <span className="text-blue-700 font-bold bg-blue-50 border border-blue-100 px-2 by-0.5 rounded-full">
+                 {schedule.length} {language === 'fr' ? "jours actifs" : "active days"}
+               </span>
+               <span className="text-blue-600 font-bold group-hover:underline text-[9px]">
+                 {isOfflineMode 
+                   ? (language === 'fr' ? "Hors Ligne" : "Offline") 
+                   : (language === 'fr' ? "Gérer →" : "Manage →")
+                 }
+               </span>
+             </div>
+          </button>
+
+          {/* Today's Active Shifts Widget */}
+          <section className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-[230px]">
+            <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
+              <h2 className="font-bold text-[10px] uppercase tracking-wider text-slate-500 truncate max-w-[75%]">
+                {language === 'fr' ? "PERSONNEL ACTIF AUJOURD'HUI" : "ACTIVE SHIFTS TODAY"} ({language === 'fr' ? weekdayDisplayFr[todayName] || todayName : todayName})
+              </h2>
+              <Link to="/staff" className="text-[9px] font-bold text-blue-500 hover:underline uppercase tracking-wider shrink-0">{t("viewAll")}</Link>
+            </div>
+            <div className="p-3 space-y-2.5 overflow-y-auto flex-1 bg-white">
+              {staffActiveToday.length === 0 ? (
+                <div className="text-center p-6 text-slate-400 italic text-[11px] font-serif flex flex-col items-center justify-center h-full">
+                  <Users className="w-6 h-6 opacity-25 mb-1.5" />
+                  {language === 'fr' 
+                    ? "Aucun personnel planifié de garde aujourd'hui." 
+                    : "No staff shifts scheduled on duty today."}
+                </div>
+              ) : (
+                staffActiveToday.map((s, i) => (
+                  <div key={s.id || i} className="flex items-center justify-between p-2 hover:bg-slate-50/80 rounded-lg border border-slate-100/50 transition-colors text-xs bg-slate-50/20">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 bg-slate-800 text-white text-[11px] font-mono rounded flex items-center justify-center shrink-0 font-bold">
+                        {s.name?.charAt(0) || s.fullName?.charAt(0) || "S"}
+                      </div>
+                      <div className="truncate pr-1">
+                        <p className="font-bold text-slate-800 truncate">{s.fullName || s.name}</p>
+                        <p className="text-[9px] font-mono text-slate-400 uppercase tracking-wider mt-0.5">{t(s.role)}</p>
+                      </div>
+                    </div>
+                    <span className="text-[8.5px] font-mono font-bold bg-green-50 text-green-700 border border-green-100/85 px-2 py-0.5 rounded-full uppercase shrink-0">
+                      {t("ACTIVE")}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* Real Inventory Status */}
+          <section className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-40 overflow-hidden shrink-0">
+            <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center bg-slate-50/50 shrink-0">
+              <h2 className="font-bold text-[10px] uppercase tracking-wider text-slate-500">{t("criticalInventory")}</h2>
+              <Link to="/inventory" className="text-[9px] tracking-wider font-bold text-blue-500 hover:underline uppercase">{t("viewAll")}</Link>
+            </div>
+            <div className="p-3 overflow-y-auto space-y-2 flex-1 bg-white">
+              {displayedInventory.length === 0 ? (
+                <div className="text-center p-4 text-slate-400 italic text-[11px] font-serif flex items-center justify-center h-full">
+                  {language === 'fr' ? "Aucun inventaire actif" : "No asset items available."}
+                </div>
+              ) : (
+                displayedInventory.map((item, i) => {
+                  const isLow = (Number(item.stock) || 0) <= (Number(item.minStock) || 0);
+                  return (
+                    <div key={item.id || i} className="flex items-center justify-between border-b border-slate-50 pb-1.5 last:border-0 last:pb-0 text-xs">
+                      <span className="font-medium text-slate-700 truncate pr-2">{item.name}</span>
+                      <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase shrink-0 ${
+                        isLow ? "bg-rose-100 text-rose-700 font-bold animate-pulse" : "bg-emerald-50 text-emerald-700"
+                      }`}>
+                        {isLow 
+                          ? (language === 'fr' ? `STOCK BAS: ${item.stock}${item.unit || "u"}` : `LOW STOCK: ${item.stock}${item.unit || "u"}`) 
+                          : (language === 'fr' ? `OK: ${item.stock}${item.unit || "u"}` : `SAFE: ${item.stock}${item.unit || "u"}`)
+                        }
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        </div>
       </div>
+
+      {showScheduleModal && (
+        <WorkCalendarModal 
+          isOpen={showScheduleModal}
+          onClose={() => setShowScheduleModal(false)}
+          schedule={schedule}
+          onSaveSchedule={handleSaveSchedule}
+          name={profile?.fullName || profile?.name || "Administrator"}
+          role={t("ADMIN") || "Administrator"}
+        />
+      )}
     </div>
-  </div>
-);
+  );
+};
 

@@ -27,8 +27,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
   
   if (allowedRoles && profile) {
     const userRole = getNormalizedRole(profile.role);
-    // Admin, System Admin and SupAdmin can bypass and access all screens
-    if (userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN") {
+    // System Admin and Super Admin can bypass check and access all screens
+    if (userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN") {
       return <>{children}</>;
     }
     if (!allowedRoles.includes(userRole)) {
@@ -52,37 +52,37 @@ export default function App() {
                 <Route index element={<Dashboard />} />
                 
                 <Route path="patients" element={
-                  <ProtectedRoute allowedRoles={['DOCTOR', 'NURSE', 'RECEPTIONIST', 'REGISTER', 'CASHIER']}>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST', 'REGISTER', 'CASHIER']}>
                     <PatientListing />
                   </ProtectedRoute>
                 } />
                 
                 <Route path="patients/:id" element={
-                  <ProtectedRoute allowedRoles={['DOCTOR', 'NURSE', 'RECEPTIONIST', 'REGISTER', 'CASHIER']}>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST', 'REGISTER', 'CASHIER']}>
                     <PatientDetails />
                   </ProtectedRoute>
                 } />
                 
                 <Route path="staff" element={
-                  <ProtectedRoute allowedRoles={['HR']}>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'HR']}>
                     <StaffManagement />
                   </ProtectedRoute>
                 } />
                 
                 <Route path="inventory" element={
-                  <ProtectedRoute allowedRoles={['PHARMACIST']}>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'PHARMACIST', 'PHARMACIE', 'INVENTAIRE', 'INVENTORY']}>
                     <Inventory />
                   </ProtectedRoute>
                 } />
                 
                 <Route path="pharmacy" element={
-                  <ProtectedRoute allowedRoles={['PHARMACIST', 'DOCTOR']}>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'PHARMACIST', 'PHARMACIE', 'DOCTOR']}>
                     <Pharmacy />
                   </ProtectedRoute>
                 } />
                 
                 <Route path="finance" element={
-                  <ProtectedRoute allowedRoles={['CASHIER']}>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'CASHIER']}>
                     <Finance />
                   </ProtectedRoute>
                 } />
