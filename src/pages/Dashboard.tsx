@@ -33,7 +33,9 @@ import {
   Sparkles,
   Calendar,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import WorkCalendarModal from "../components/WorkCalendarModal";
@@ -1224,6 +1226,9 @@ const AdminDashboard = ({ t, hospitalId }: any) => {
   const [restocking, setRestocking] = useState(false);
   const [schedule, setSchedule] = useState<string[]>([]);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [selectedStaffForCalendar, setSelectedStaffForCalendar] = useState<any | null>(null);
+  const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth());
 
   useEffect(() => {
     if (profile?.schedule) {
@@ -1626,20 +1631,33 @@ const AdminDashboard = ({ t, hospitalId }: any) => {
                 </div>
               ) : (
                 staffActiveToday.map((s, i) => (
-                  <div key={s.id || i} className="flex items-center justify-between p-2 hover:bg-slate-50/80 rounded-lg border border-slate-100/50 transition-colors text-xs bg-slate-50/20">
+                  <button 
+                    key={s.id || i} 
+                    onClick={() => {
+                      setSelectedStaffForCalendar(s);
+                      setCalendarYear(new Date().getFullYear());
+                      setCalendarMonth(new Date().getMonth());
+                    }}
+                    type="button"
+                    className="w-full flex items-center justify-between p-2 hover:bg-slate-100 hover:border-slate-300 rounded-lg border border-slate-100/50 transition-all text-xs bg-slate-50/20 text-left focus:outline-none cursor-pointer group"
+                    title={language === 'fr' ? "Voir le calendrier de garde de ce personnel" : "View this staff's shift calendar"}
+                  >
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-7 h-7 bg-slate-800 text-white text-[11px] font-mono rounded flex items-center justify-center shrink-0 font-bold">
+                      <div className="w-7 h-7 bg-slate-800 text-white text-[11px] font-mono rounded flex items-center justify-center shrink-0 font-bold group-hover:bg-blue-600 transition-colors">
                         {s.name?.charAt(0) || s.fullName?.charAt(0) || "S"}
                       </div>
                       <div className="truncate pr-1">
-                        <p className="font-bold text-slate-800 truncate">{s.fullName || s.name}</p>
+                        <p className="font-bold text-slate-800 truncate group-hover:text-blue-600 transition-colors">{s.fullName || s.name}</p>
                         <p className="text-[9px] font-mono text-slate-400 uppercase tracking-wider mt-0.5">{t(s.role)}</p>
                       </div>
                     </div>
-                    <span className="text-[8.5px] font-mono font-bold bg-green-50 text-green-700 border border-green-100/85 px-2 py-0.5 rounded-full uppercase shrink-0">
-                      {t("ACTIVE")}
-                    </span>
-                  </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[8.5px] font-mono font-bold bg-green-50 text-green-700 border border-green-100/85 px-2 py-0.5 rounded-full uppercase">
+                        {t("ACTIVE")}
+                      </span>
+                      <Calendar className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                    </div>
+                  </button>
                 ))
               )}
             </div>
@@ -1689,6 +1707,168 @@ const AdminDashboard = ({ t, hospitalId }: any) => {
           role={t("ADMIN") || "Administrator"}
         />
       )}
+
+      {selectedStaffForCalendar && (() => {
+        const testYear = calendarYear;
+        const testMonth = calendarMonth;
+        
+        const monthNamesFr = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+        const monthNamesEn = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        
+        const currentMonthName = language === 'fr' ? monthNamesFr[testMonth] : monthNamesEn[testMonth];
+        
+        const labelsFr = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+        const labelsEn = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const weekdayLabels = language === 'fr' ? labelsFr : labelsEn;
+        
+        const daysOfWeekList = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+        const daysInMonth: Date[] = [];
+        const dateIterator = new Date(testYear, testMonth, 1);
+        while (dateIterator.getMonth() === testMonth) {
+          daysInMonth.push(new Date(dateIterator));
+          dateIterator.setDate(dateIterator.getDate() + 1);
+        }
+        
+        const firstDayIdx = new Date(testYear, testMonth, 1).getDay();
+
+        let workingCount = 0;
+        const gridDays = daysInMonth.map(date => {
+          const yStr = date.getFullYear();
+          const mStr = String(date.getMonth() + 1).padStart(2, '0');
+          const dStr = String(date.getDate()).padStart(2, '0');
+          const dateStr = `${yStr}-${mStr}-${dStr}`;
+          const dayName = daysOfWeekList[date.getDay()];
+          
+          const sSchedule = selectedStaffForCalendar.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+          const isActive = sSchedule.includes(dateStr) || sSchedule.includes(dayName);
+          
+          if (isActive) {
+            workingCount++;
+          }
+          
+          return {
+            date,
+            dayNum: date.getDate(),
+            isActive,
+            isToday: new Date().toDateString() === date.toDateString()
+          };
+        });
+
+        const handlePrevMonth = () => {
+          if (testMonth === 0) {
+            setCalendarMonth(11);
+            setCalendarYear(testYear - 1);
+          } else {
+            setCalendarMonth(testMonth - 1);
+          }
+        };
+
+        const handleNextMonth = () => {
+          if (testMonth === 11) {
+            setCalendarMonth(0);
+            setCalendarYear(testYear + 1);
+          } else {
+            setCalendarMonth(testMonth + 1);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-app-bg border border-app-line w-full max-w-md my-auto relative shadow-2xl animate-in zoom-in-95 duration-200">
+              <div className="p-6">
+                
+                <div className="flex items-start justify-between border-b border-app-line pb-4 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-slate-900 text-white rounded font-mono text-sm font-bold flex items-center justify-center">
+                      {selectedStaffForCalendar.name?.charAt(0) || selectedStaffForCalendar.fullName?.charAt(0) || "S"}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-800 font-serif italic text-base leading-tight">
+                        {selectedStaffForCalendar.fullName || selectedStaffForCalendar.name}
+                      </h4>
+                      <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mt-1">
+                        {language === 'fr' ? "RÔLE : " : "ROLE: "} {t(selectedStaffForCalendar.role)}
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedStaffForCalendar(null)}
+                    type="button"
+                    className="text-slate-400 hover:text-slate-600 font-mono text-sm tracking-wide p-1 cursor-pointer focus:outline-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between mb-4 bg-slate-50 border border-app-line p-2">
+                  <button 
+                    onClick={handlePrevMonth} 
+                    type="button" 
+                    className="p-1 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="text-center">
+                    <span className="font-mono text-xs font-bold uppercase tracking-widest block text-slate-800">
+                      {currentMonthName} {testYear}
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 by-0.5 rounded-full mt-1 inline-block border border-emerald-100 px-2 py-0.5">
+                      {language === 'fr' ? `${workingCount} jours actifs` : `${workingCount} active days`}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={handleNextMonth} 
+                    type="button" 
+                    className="p-1 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 text-center mb-6">
+                  {weekdayLabels.map((lbl, idx) => (
+                    <div key={idx} className="text-[9px] uppercase font-mono font-bold text-slate-400 py-1">
+                      {lbl}
+                    </div>
+                  ))}
+
+                  {Array(firstDayIdx).fill(null).map((_, idx) => (
+                    <div key={`empty-${idx}`} className="aspect-square bg-slate-50/20 border border-slate-100/30 rounded" />
+                  ))}
+
+                  {gridDays.map((day, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`relative aspect-square flex flex-col items-center justify-center rounded border transition-all ${
+                        day.isActive 
+                          ? "bg-emerald-600 text-white font-bold border-emerald-700 shadow-sm" 
+                          : "bg-white text-slate-400 border-slate-100 hover:bg-slate-50"
+                      } ${day.isToday ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
+                    >
+                      <span className="text-xs font-mono">{day.dayNum}</span>
+                      {day.isActive && (
+                        <div className="absolute bottom-1 w-1 h-1 bg-white rounded-full" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end pt-4 border-t border-app-line">
+                  <button
+                    onClick={() => setSelectedStaffForCalendar(null)}
+                    type="button"
+                    className="px-6 py-2 bg-app-ink text-app-bg font-mono text-[10px] uppercase tracking-widest hover:opacity-95 transition-opacity cursor-pointer"
+                  >
+                    {language === 'fr' ? "Fermer" : "Close"}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
