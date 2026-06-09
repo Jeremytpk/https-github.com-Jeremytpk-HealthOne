@@ -82,7 +82,7 @@ export default function App() {
                 } />
                 
                 <Route path="finance" element={
-                  <ProtectedRoute allowedRoles={['ADMIN', 'CASHIER']}>
+                  <ProtectedRoute allowedRoles={['ADMIN', 'REGISTER']}>
                     <Finance />
                   </ProtectedRoute>
                 } />

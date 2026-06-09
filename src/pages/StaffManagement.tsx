@@ -30,7 +30,7 @@ import {
   ShieldAlert,
   SlidersHorizontal
 } from "lucide-react";
-import { UserRole, UserStatus, getNormalizedRole } from "../lib/utils";
+import { UserRole, UserStatus, getNormalizedRole, generateUsernameFromName } from "../lib/utils";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import firebaseConfig from "../../firebase-applet-config.json";
@@ -198,8 +198,8 @@ export default function StaffManagement() {
       return;
     }
 
-    if (!newStaffData.name || !newStaffData.username || !newStaffData.email || !newStaffData.password) {
-      alert("Please fill in all required fields (Name, Username, Email, Password).");
+    if (!newStaffData.name || !newStaffData.username || !newStaffData.password) {
+      alert("Please fill in all required fields (Name, Username, Password).");
       return;
     }
 
@@ -210,9 +210,13 @@ export default function StaffManagement() {
       secondaryApp = initializeApp(firebaseConfig, "StaffCreationApp");
       const secondaryAuth = getAuth(secondaryApp);
 
+      const resolvedEmail = newStaffData.email.trim() 
+        ? newStaffData.email.trim() 
+        : `${newStaffData.username.toLowerCase().trim()}@healthone.local`;
+
       const userCredential = await createUserWithEmailAndPassword(
         secondaryAuth,
-        newStaffData.email.trim(),
+        resolvedEmail,
         newStaffData.password.trim()
       );
 
@@ -225,11 +229,11 @@ export default function StaffManagement() {
         name: newStaffData.name.trim(),
         fullName: newStaffData.name.trim(),
         username: newStaffData.username.toLowerCase().trim(),
-        email: newStaffData.email.trim(),
+        email: resolvedEmail,
         password: newStaffData.password.trim(),
         role: newStaffData.role,
         hospitalId,
-        status: "ACTIVE",
+        status: "PENDING_APPROVAL",
         schedule: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
         createdAt: serverTimestamp()
       });
@@ -276,6 +280,17 @@ export default function StaffManagement() {
       pwd += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     setNewStaffData(p => ({ ...p, password: pwd }));
+  };
+
+  const suggestUsername = () => {
+    if (!newStaffData.name) {
+      alert(language === 'fr' 
+        ? "Veuillez d'abord saisir le nom complet pour générer un nom d'utilisateur." 
+        : "Please enter the Full Name first to generate a username.");
+      return;
+    }
+    const suggested = generateUsernameFromName(newStaffData.name);
+    setNewStaffData(p => ({ ...p, username: suggested }));
   };
 
   const filteredStaff = staff.filter(s => {
@@ -440,13 +455,26 @@ export default function StaffManagement() {
                   type="text" 
                   required 
                   value={newStaffData.name}
-                  onChange={(e) => setNewStaffData({...newStaffData, name: e.target.value})}
+                  onChange={(e) => {
+                    const nameVal = e.target.value;
+                    const autoUsername = generateUsernameFromName(nameVal);
+                    setNewStaffData(prev => ({ ...prev, name: nameVal, username: autoUsername }));
+                  }}
                   className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">Username / Nom d'utilisateur</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-[10px] uppercase font-mono opacity-50">Username / Nom d'utilisateur</label>
+                  <button 
+                    type="button" 
+                    onClick={suggestUsername}
+                    className="text-[9px] font-mono text-blue-600 hover:underline cursor-pointer"
+                  >
+                    {language === 'fr' ? "Suggérer" : "Suggest"}
+                  </button>
+                </div>
                 <input 
                   type="text" 
                   required 
@@ -458,10 +486,11 @@ export default function StaffManagement() {
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">{t("email")}</label>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">
+                  {t("email")} {language === 'fr' ? "(Optionnel)" : "(Optional)"}
+                </label>
                 <input 
                   type="email" 
-                  required 
                   value={newStaffData.email}
                   onChange={(e) => setNewStaffData({...newStaffData, email: e.target.value})}
                   className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg"
@@ -471,13 +500,6 @@ export default function StaffManagement() {
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="block text-[10px] uppercase font-mono opacity-50">Password / Mot de passe</label>
-                  <button 
-                    type="button" 
-                    onClick={generateRandomPassword}
-                    className="text-[9px] font-mono text-blue-600 hover:underline cursor-pointer"
-                  >
-                    Generate Strong Password
-                  </button>
                 </div>
                 <div className="relative">
                   <KeyRound className="absolute left-3 top-3 w-4 h-4 text-slate-400" />

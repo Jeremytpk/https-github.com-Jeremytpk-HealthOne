@@ -131,6 +131,7 @@ export default function PatientDetails() {
   const userRole = getNormalizedRole(profile?.role);
   const canDeletePatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
   const canEditPatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+  const isFinancialAllowed = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
 
   const handleOpenEditPatient = () => {
     if (!patient) return;
@@ -773,7 +774,7 @@ export default function PatientDetails() {
                 )}
 
                 {/* Case Payments History and Dynamic Sum */}
-                {(() => {
+                {isFinancialAllowed && (() => {
                   const offlinePayments = getQueuedItemsForCollection("payments")
                     .filter((item: any) => item.data.patientId === id)
                     .map((item: any) => ({ id: item.id, ...item.data }));
@@ -1082,64 +1083,66 @@ export default function PatientDetails() {
                 </div>
               )}
 
-              <div className="border-t border-app-line pt-4 space-y-4">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={newCaseData.registerPayment || false}
-                    onChange={(e) => setNewCaseData({ ...newCaseData, registerPayment: e.target.checked })}
-                    className="w-4 h-4 text-emerald-600 border-app-line rounded focus:ring-1 focus:ring-emerald-600"
-                  />
-                  <span className="text-xs font-mono font-bold uppercase tracking-wide text-emerald-700">
-                    {language === 'fr' ? "Enregistrer un paiement pour ce cas ?" : "Register payment for this department visit / case?"}
-                  </span>
-                </label>
+              {isFinancialAllowed && (
+                <div className="border-t border-app-line pt-4 space-y-4">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newCaseData.registerPayment || false}
+                      onChange={(e) => setNewCaseData({ ...newCaseData, registerPayment: e.target.checked })}
+                      className="w-4 h-4 text-emerald-600 border-app-line rounded focus:ring-1 focus:ring-emerald-600"
+                    />
+                    <span className="text-xs font-mono font-bold uppercase tracking-wide text-emerald-700">
+                      {language === 'fr' ? "Enregistrer un paiement pour ce cas ?" : "Register payment for this department visit / case?"}
+                    </span>
+                  </label>
 
-                {(newCaseData.registerPayment || false) && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-emerald-50/50 border border-emerald-100 rounded animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div>
-                      <label className="block text-[9px] uppercase font-mono opacity-50 mb-1 tracking-widest">
-                        {language === 'fr' ? "Devise" : "Currency"}
-                      </label>
-                      <select
-                        value={newCaseData.paymentCurrency || "USD"}
-                        onChange={(e) => setNewCaseData({...newCaseData, paymentCurrency: e.target.value})}
-                        className="w-full bg-white border border-app-line p-1.5 font-mono text-xs focus:outline-none"
-                      >
-                        <option value="USD">USD ($)</option>
-                        <option value="FC">FC (Congo Franc)</option>
-                      </select>
+                  {(newCaseData.registerPayment || false) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-emerald-50/50 border border-emerald-100 rounded animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div>
+                        <label className="block text-[9px] uppercase font-mono opacity-50 mb-1 tracking-widest">
+                          {language === 'fr' ? "Devise" : "Currency"}
+                        </label>
+                        <select
+                          value={newCaseData.paymentCurrency || "USD"}
+                          onChange={(e) => setNewCaseData({...newCaseData, paymentCurrency: e.target.value})}
+                          className="w-full bg-white border border-app-line p-1.5 font-mono text-xs focus:outline-none"
+                        >
+                          <option value="USD">USD ($)</option>
+                          <option value="FC">FC (Congo Franc)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[9px] uppercase font-mono opacity-50 mb-1 tracking-widest">
+                          {language === 'fr' ? "Montant" : "Amount"}
+                        </label>
+                        <input 
+                          type="number"
+                          required={newCaseData.registerPayment}
+                          value={newCaseData.paymentAmount || ""}
+                          onChange={(e) => setNewCaseData({...newCaseData, paymentAmount: e.target.value})}
+                          className="w-full bg-white border border-app-line p-1.5 font-mono text-xs focus:outline-none font-bold text-emerald-700"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] uppercase font-mono opacity-50 mb-1 tracking-widest">
+                          {language === 'fr' ? "Méthode" : "Method"}
+                        </label>
+                        <select
+                          value={newCaseData.paymentMethod || "CASH"}
+                          onChange={(e) => setNewCaseData({...newCaseData, paymentMethod: e.target.value})}
+                          className="w-full bg-white border border-app-line p-1.5 font-mono text-xs focus:outline-none"
+                        >
+                          <option value="CASH">{language === 'fr' ? "Espèces" : "Cash"}</option>
+                          <option value="CARD">{language === 'fr' ? "Carte" : "Card"}</option>
+                          <option value="INSURANCE">{language === 'fr' ? "Assurance" : "Insurance"}</option>
+                        </select>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[9px] uppercase font-mono opacity-50 mb-1 tracking-widest">
-                        {language === 'fr' ? "Montant" : "Amount"}
-                      </label>
-                      <input 
-                        type="number"
-                        required={newCaseData.registerPayment}
-                        value={newCaseData.paymentAmount || ""}
-                        onChange={(e) => setNewCaseData({...newCaseData, paymentAmount: e.target.value})}
-                        className="w-full bg-white border border-app-line p-1.5 font-mono text-xs focus:outline-none font-bold text-emerald-700"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] uppercase font-mono opacity-50 mb-1 tracking-widest">
-                        {language === 'fr' ? "Méthode" : "Method"}
-                      </label>
-                      <select
-                        value={newCaseData.paymentMethod || "CASH"}
-                        onChange={(e) => setNewCaseData({...newCaseData, paymentMethod: e.target.value})}
-                        className="w-full bg-white border border-app-line p-1.5 font-mono text-xs focus:outline-none"
-                      >
-                        <option value="CASH">{language === 'fr' ? "Espèces" : "Cash"}</option>
-                        <option value="CARD">{language === 'fr' ? "Carte" : "Card"}</option>
-                        <option value="INSURANCE">{language === 'fr' ? "Assurance" : "Insurance"}</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 mt-8 pt-4 border-t border-app-line">
                 <button 

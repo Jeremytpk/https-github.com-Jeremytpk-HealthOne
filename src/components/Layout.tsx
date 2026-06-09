@@ -52,7 +52,7 @@ const Layout: React.FC = () => {
     { path: "/staff", icon: Users, label: t("staff"), roles: ['ADMIN', 'HR', 'SYSTEM_ADMIN'] },
     { path: "/inventory", icon: Package, label: t("inventory"), roles: ['ADMIN', 'PHARMACIST', 'PHARMACIE', 'INVENTAIRE', 'INVENTORY'] },
     { path: "/pharmacy", icon: Pill, label: t("pharmacy"), roles: ['ADMIN', 'PHARMACIST', 'PHARMACIE', 'DOCTOR'] },
-    { path: "/finance", icon: Wallet, label: t("finance"), roles: ['ADMIN', 'CASHIER'] },
+    { path: "/finance", icon: Wallet, label: t("finance"), roles: ['ADMIN', 'REGISTER'] },
     { path: "/system-admin", icon: ShieldAlert, label: t("systemAdmin"), roles: ['SYSTEM_ADMIN', 'SUP_ADMIN'] },
   ];
 

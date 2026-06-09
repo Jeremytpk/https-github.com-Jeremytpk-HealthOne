@@ -12,13 +12,17 @@ import {
   Building2,
   Calendar,
   Save,
-  Tag
+  Tag,
+  KeyRound
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { updatePassword } from "firebase/auth";
+import { doc, updateDoc } from "firebase/firestore";
+import { auth, db } from "../firebase";
 
 export default function Profile() {
   const { profile, updateProfile } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   const [fullName, setFullName] = useState(profile?.fullName || profile?.name || "");
   const [phone, setPhone] = useState(profile?.phone || "");
@@ -26,6 +30,11 @@ export default function Profile() {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [passwordNotification, setPasswordNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +62,65 @@ export default function Profile() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordNotification({
+        type: "error",
+        message: language === 'fr' 
+          ? "Le mot de passe doit contenir au moins 6 caractères." 
+          : "Password must be at least 6 characters long."
+      });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordNotification({
+        type: "error",
+        message: language === 'fr' 
+          ? "Les mots de passe ne correspondent pas." 
+          : "Passwords do not match."
+      });
+      return;
+    }
+
+    setPasswordSubmitting(true);
+    setPasswordNotification(null);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("No active user session found");
+
+      await updatePassword(currentUser, newPassword);
+
+      const docRef = doc(db, "users", currentUser.uid);
+      await updateDoc(docRef, { password: newPassword });
+
+      setPasswordNotification({
+        type: "success",
+        message: language === 'fr' 
+          ? "Votre mot de passe a été modifié avec succès !" 
+          : "Password successfully updated!"
+      });
+      setNewPassword("");
+      setConfirmPassword("");
+      setTimeout(() => setPasswordNotification(null), 5000);
+    } catch (err: any) {
+      console.error(err);
+      let errMsg = err.message || "";
+      if (err.code === "auth/requires-recent-login") {
+        errMsg = language === 'fr'
+          ? "Cette action nécessite une connexion récente. Veuillez vous déconnecter et vous reconnecter pour changer de mot de passe."
+          : "This action requires recent authentication. Please log out, sign back in, and try again.";
+      }
+      setPasswordNotification({
+        type: "error",
+        message: errMsg
+      });
+    } finally {
+      setPasswordSubmitting(false);
     }
   };
 
@@ -145,42 +213,140 @@ export default function Profile() {
         </div>
 
         {/* Right column: Form */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 p-6 sm:p-8 shadow-sm">
-          <h3 className="text-base font-serif italic font-bold border-b border-slate-200 pb-3 uppercase tracking-widest mb-6 font-mono">
-            {t("editUserInformation")}
-          </h3>
+        <div className="lg:col-span-2 space-y-6 sm:space-y-8">
+          {/* User Information Form */}
+          <div className="bg-white border border-slate-200 p-6 sm:p-8 shadow-sm">
+            <h3 className="text-base font-serif italic font-bold border-b border-slate-200 pb-3 uppercase tracking-widest mb-6 font-mono">
+              {t("editUserInformation")}
+            </h3>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-[10px] uppercase font-mono opacity-50 mb-1.5 tracking-widest">
-                {t("fullName")}
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input 
-                  type="text" 
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="e.g. Jean Dupont"
-                  className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 font-sans text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all placeholder:text-slate-400"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="block text-[10px] uppercase font-mono opacity-50 mb-1.5 tracking-widest">
-                  {t("username")}
+                  {t("fullName")}
                 </label>
                 <div className="relative">
-                  <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input 
                     type="text" 
                     required
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="e.g. jdupont"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Jean Dupont"
+                    className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 font-sans text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-[10px] uppercase font-mono opacity-50 mb-1.5 tracking-widest">
+                    {t("username")}
+                  </label>
+                  <div className="relative">
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="text" 
+                      required
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="e.g. jdupont"
+                      className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 font-mono text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-mono opacity-50 mb-1.5 tracking-widest">
+                    {t("phoneNumber")}
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="tel" 
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+33 6 12 34 56 78"
+                      className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 font-mono text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1.5 tracking-widest">
+                  {t("designatedRole")} ({t("readOnly") || "READ_ONLY"})
+                </label>
+                <div className="relative opacity-60">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="text" 
+                    disabled
+                    value={profile?.role ? t(profile.role.toUpperCase()) : t("Staff")}
+                    className="w-full bg-slate-100 border border-slate-200 pl-10 pr-4 py-2.5 font-sans text-sm outline-none cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex justify-end">
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting}
+                  className="px-8 py-3 bg-slate-900 text-white font-mono text-[10px] uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center gap-2"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {isSubmitting ? "..." : t("saveProfile")}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Change Password Himself Section */}
+          <div className="bg-white border border-slate-200 p-6 sm:p-8 shadow-sm">
+            <h3 className="text-base font-serif italic font-bold border-b border-slate-200 pb-3 uppercase tracking-widest mb-6 font-mono">
+              {language === 'fr' ? "Changer de mot de passe" : "Change Password"}
+            </h3>
+
+            <AnimatePresence>
+              {passwordNotification && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className={`p-4 flex items-start gap-3 border mb-6 ${
+                    passwordNotification.type === "success" 
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
+                      : "bg-rose-50 border-rose-200 text-rose-800"
+                  }`}
+                >
+                  {passwordNotification.type === "success" ? (
+                    <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <p className="text-xs font-bold font-mono uppercase tracking-wider">
+                      {passwordNotification.type === "success" ? "STATUS_OK" : "STATUS_ERROR"}
+                    </p>
+                    <p className="text-xs mt-1 leading-relaxed opacity-90">{passwordNotification.message}</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <form onSubmit={handlePasswordSubmit} className="space-y-6">
+              <div>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1.5 tracking-widest">
+                  {language === 'fr' ? "Nouveau mot de passe" : "New Password"}
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="password" 
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
                     className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 font-mono text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all placeholder:text-slate-400"
                   />
                 </div>
@@ -188,47 +354,33 @@ export default function Profile() {
 
               <div>
                 <label className="block text-[10px] uppercase font-mono opacity-50 mb-1.5 tracking-widest">
-                  {t("phoneNumber")}
+                  {language === 'fr' ? "Confirmer le mot de passe" : "Confirm Password"}
                 </label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input 
-                    type="tel" 
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+33 6 12 34 56 78"
+                    type="password" 
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
                     className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 font-mono text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all placeholder:text-slate-400"
                   />
                 </div>
               </div>
-            </div>
 
-            <div>
-              <label className="block text-[10px] uppercase font-mono opacity-50 mb-1.5 tracking-widest">
-                {t("designatedRole")} ({t("readOnly") || "READ_ONLY"})
-              </label>
-              <div className="relative opacity-60">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input 
-                  type="text" 
-                  disabled
-                  value={profile?.role ? t(profile.role.toUpperCase()) : t("Staff")}
-                  className="w-full bg-slate-100 border border-slate-200 pl-10 pr-4 py-2.5 font-sans text-sm outline-none cursor-not-allowed"
-                />
+              <div className="pt-4 border-t border-slate-100 flex justify-end">
+                <button 
+                  type="submit" 
+                  disabled={passwordSubmitting}
+                  className="px-8 py-3 bg-slate-900 text-white font-mono text-[10px] uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center gap-2"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {passwordSubmitting ? "..." : (language === 'fr' ? "Mettre à jour" : "Change Password")}
+                </button>
               </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
-              <button 
-                type="submit" 
-                disabled={isSubmitting}
-                className="px-8 py-3 bg-slate-900 text-white font-mono text-[10px] uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center gap-2"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {isSubmitting ? "..." : t("saveProfile")}
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       </div>
     </div>

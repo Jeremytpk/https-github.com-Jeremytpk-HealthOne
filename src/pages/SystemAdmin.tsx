@@ -376,6 +376,20 @@ export default function SystemAdmin() {
     }
   };
 
+  const handleValidateUser = async (userId: string) => {
+    setUpdatingUserId(userId);
+    try {
+      await updateDoc(doc(db, "users", userId), { status: "ACTIVE" });
+      alert("User account validated and approved successfully!");
+      fetchUsers();
+    } catch (error) {
+      console.error("Error validating user:", error);
+      alert("Failed to validate user account.");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
   const getHospitalName = (hId: string) => {
     if (!hId) return "No Hospital Assignment";
     const match = hospitals.find(h => h.id === hId);
@@ -561,6 +575,15 @@ export default function SystemAdmin() {
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-slate-800 text-sm">{u.name || "Unnamed user"}</span>
                         <span className="text-[9px] font-mono border border-app-line px-1.5 py-0.5 bg-slate-100 text-slate-600 uppercase tracking-widest">{userRole}</span>
+                        {u.status === "PENDING_APPROVAL" ? (
+                          <span className="text-[8px] font-mono bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+                            PENDING VALIDATION
+                          </span>
+                        ) : (
+                          <span className="text-[8px] font-mono bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+                            ACTIVE
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-500 truncate">{u.email}</p>
                       <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1">
@@ -588,6 +611,18 @@ export default function SystemAdmin() {
                         <Save className="w-3.5 h-3.5" />
                         {isUpdating ? "SAVING..." : "SAVE"}
                       </button>
+
+                      {u.status === "PENDING_APPROVAL" && (
+                        <button
+                          onClick={() => handleValidateUser(u.id)}
+                          disabled={isUpdating}
+                          className={`h-9 bg-emerald-600 hover:bg-emerald-700 text-white px-3 flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-widest font-bold transition-all ${isUpdating ? "opacity-50 cursor-not-allowed" : ""}`}
+                          title="Validate and activate this account"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          APPROVE
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

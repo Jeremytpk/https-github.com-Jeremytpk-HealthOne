@@ -342,6 +342,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
   });
 
   const [showAllStaff, setShowAllStaff] = useState(false);
+  const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(!isOfflineMode && patients.length === 0);
   const [viewingPedSchedule, setViewingPedSchedule] = useState<any | null>(null);
 
@@ -504,9 +505,33 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
       console.error("Staff fetch snap error:", error);
     });
 
+    let unsubscribePay = () => {};
+    if (userRole === "REGISTER" || userRole === "ADMIN") {
+      try {
+        const cachedPay = localStorage.getItem(`healthone_cached_payments_${hId}`);
+        if (cachedPay) setPayments(JSON.parse(cachedPay));
+      } catch (e) {
+        console.error("Failed loading cached payments on ReceptionistDashboard", e);
+      }
+
+      const qPay = query(collection(db, "payments"), where("hospitalId", "==", hId));
+      unsubscribePay = onSnapshot(qPay, (snapshot) => {
+        const payList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setPayments(payList);
+        try {
+          localStorage.setItem(`healthone_cached_payments_${hId}`, JSON.stringify(payList));
+        } catch (e) {
+          console.error("Failed saving payments cache on ReceptionistDashboard", e);
+        }
+      }, (error) => {
+        console.error("Payments snapshot listener failed on ReceptionistDashboard", error);
+      });
+    }
+
     return () => {
       unsubscribe();
       unsubscribeStaff();
+      unsubscribePay();
     };
   }, [hospitalId, profile, isOfflineMode]);
 
@@ -517,6 +542,23 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
   const mergedPatients = [...offlinePatients, ...patients];
 
   const displayList = showAllStaff ? allStaff : pediatricians;
+
+  const offlinePayments = getQueuedItemsForCollection("payments")
+    .filter((item: any) => item.data.hospitalId === hospitalId)
+    .map((item: any) => ({ id: item.id, ...item.data }));
+  const mergedPayments = [...offlinePayments, ...payments];
+
+  const totalUSD = mergedPayments.filter(p => !p.currency || p.currency === "USD").reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalCDF = mergedPayments.filter(p => p.currency === "CDF" || p.currency === "CFC" || p.currency === "FC").reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+  const formattedUSD = new Intl.NumberFormat(language === 'fr' ? 'fr-CA' : 'en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
+  }).format(totalUSD);
+
+  const formattedCDF = `${totalCDF.toLocaleString(language === 'fr' ? 'fr-CA' : 'en-US')} FC`;
+  const formattedRevenue = `${formattedUSD} / ${formattedCDF}`;
 
   return (
     <div className="space-y-4">
@@ -537,8 +579,18 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard title={t("labRegistry")} value={mergedPatients.length.toString()} icon={Users} trend="+12 today" variant="dark" />
-        <StatCard title={t("avgTriageWait")} value="14 min" icon={Clock} trend="↑ 2m vs yesterday" />
+        {userRole === 'REGISTER' ? (
+          <StatCard 
+            title={language === 'fr' ? "Revenus (USD / FC)" : "Revenue (USD / FC)"} 
+            value={formattedRevenue} 
+            icon={TrendingUp} 
+            trend={`${mergedPayments.length} ${language === 'fr' ? "transactions" : "paid invoices"}`} 
+            variant="dark" 
+          />
+        ) : (
+          <StatCard title={t("labRegistry")} value={mergedPatients.length.toString()} icon={Users} trend="+12 today" variant="dark" />
+        )}
+        <StatCard title={userRole === 'REGISTER' ? t("labRegistry") : t("avgTriageWait")} value={userRole === 'REGISTER' ? mergedPatients.length.toString() : "14 min"} icon={userRole === 'REGISTER' ? Users : Clock} trend={userRole === 'REGISTER' ? "+12 today" : "↑ 2m vs yesterday"} />
         <StatCard title={t("insuranceVerified")} value="82%" icon={CheckCircle2} trend="Optimal" />
         <StatCard title={t("emergencyAdmits")} value="03" icon={Activity} trend="Active Now" />
       </div>
@@ -1147,14 +1199,23 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
   );
 };
 
-const PharmacistDashboard = ({ t }: any) => (
-  <div className="space-y-4">
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <StatCard title={t("pendingPrescriptions")} value="18" icon={Package} trend="Live Queue" variant="dark" />
-      <StatCard title={t("lowStockAlarms")} value="06" icon={TrendingUp} trend="Needs ordering" />
-      <StatCard title={t("narcoticsCount")} value="Verified" icon={CheckCircle2} trend="Confirmed 08:00" />
-      <StatCard title={t("dailyTurnover")} value="$4,200" icon={TrendingUp} trend="↑ 5% vs Avg" />
-    </div>
+const PharmacistDashboard = ({ t }: any) => {
+  const { profile } = useAuth();
+  const userRole = getNormalizedRole(profile?.role);
+  const isFinancialAllowed = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard title={t("pendingPrescriptions")} value="18" icon={Package} trend="Live Queue" variant="dark" />
+        <StatCard title={t("lowStockAlarms")} value="06" icon={TrendingUp} trend="Needs ordering" />
+        <StatCard title={t("narcoticsCount")} value="Verified" icon={CheckCircle2} trend="Confirmed 08:00" />
+        {isFinancialAllowed ? (
+          <StatCard title={t("dailyTurnover")} value="$4,200" icon={TrendingUp} trend="↑ 5% vs Avg" />
+        ) : (
+          <StatCard title={t("dispensingQueue") || "Active Patients"} value="12" icon={Activity} trend="Normal load" />
+        )}
+      </div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:h-[500px]">
        <div className="bg-white rounded-xl border p-4 h-[300px] lg:h-full">
           <h4 className="text-xs font-bold mb-4">{t("stockUtilization")}</h4>
@@ -1186,37 +1247,41 @@ const PharmacistDashboard = ({ t }: any) => (
        </div>
     </div>
   </div>
-);
+  );
+};
 
-const CashierDashboard = ({ t }: any) => (
-  <div className="space-y-4">
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <StatCard title={t("revenueToday")} value="$12,450" icon={TrendingUp} trend="+15% vs Goal" variant="dark" />
-      <StatCard title={t("pendingInvoices")} value="23" icon={Clock} trend="Awaiting Insurar" />
-      <StatCard title={t("successfulPayments")} value="42" icon={CheckCircle2} trend="Optimal flow" />
-      <StatCard title={t("insuranceClaims")} value="08" icon={Activity} trend="Pending Review" />
+const CashierDashboard = ({ t }: any) => {
+  const { language } = useLanguage();
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard title={t("pendingInvoices")} value="23" icon={Clock} trend="In Queue" variant="dark" />
+        <StatCard title={t("successfulPayments") || "Processed Transactions"} value="42" icon={CheckCircle2} trend="Optimal flow" />
+        <StatCard title={t("insuranceClaims")} value="08" icon={Activity} trend="Pending Review" />
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col justify-center items-center text-center space-y-3 min-h-[300px]">
+        <div className="p-3 bg-slate-50 border border-slate-100 rounded-full text-slate-400">
+          <Clock className="w-8 h-8" />
+        </div>
+        <h3 className="font-serif italic font-bold text-lg text-slate-800">
+          {language === 'fr' ? "Gestion de Facturation Active" : "Active Billing Queue Management"}
+        </h3>
+        <p className="text-xs text-slate-500 max-w-md leading-relaxed font-mono uppercase tracking-tight">
+          {language === 'fr' 
+            ? "Veuillez utiliser la section Dossiers Patients pour valider et enregistrer les fiches de traitement." 
+            : "Please refer to the Patient Files or Cases section to validate and process active care sheets."}
+        </p>
+      </div>
     </div>
-    <div className="bg-white rounded-xl border border-slate-200 h-[400px] lg:h-[500px] flex flex-col">
-       <div className="p-4 border-b font-bold text-xs uppercase tracking-tight text-slate-500">{t("financialOverview")}</div>
-       <div className="flex-1 p-4 overflow-hidden">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
-               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-               <XAxis dataKey="name" fontSize={10} />
-               <YAxis fontSize={10} width={40} />
-               <Tooltip />
-               <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-       </div>
-    </div>
-  </div>
-);
+  );
+};
 
 const AdminDashboard = ({ t, hospitalId }: any) => {
   const { profile, updateProfile } = useAuth();
   const { language } = useLanguage();
   const { isOfflineMode, getQueuedItemsForCollection } = useOfflineSync();
+  const userRole = getNormalizedRole(profile?.role);
+  const isFinancialAllowed = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
 
   const [patients, setPatients] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
@@ -1468,14 +1533,16 @@ const AdminDashboard = ({ t, hospitalId }: any) => {
   return (
     <div className="space-y-4">
       {/* Analytics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard 
-          title={language === 'fr' ? "Revenus (USD / FC)" : "Revenue (USD / FC)"} 
-          value={formattedRevenue} 
-          icon={TrendingUp} 
-          trend={`${mergedPayments.length} ${language === 'fr' ? "transactions d'achat" : "paid invoices"}`} 
-          variant="dark" 
-        />
+      <div className={`grid grid-cols-1 ${isFinancialAllowed ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+        {isFinancialAllowed && (
+          <StatCard 
+            title={language === 'fr' ? "Revenus (USD / FC)" : "Revenue (USD / FC)"} 
+            value={formattedRevenue} 
+            icon={TrendingUp} 
+            trend={`${mergedPayments.length} ${language === 'fr' ? "transactions d'achat" : "paid invoices"}`} 
+            variant="dark" 
+          />
+        )}
 
         <StatCard 
           title={language === 'fr' ? "Personnel" : "Staff Members"} 

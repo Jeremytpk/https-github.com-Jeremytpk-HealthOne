@@ -22,6 +22,100 @@ export default function Login() {
     // If logging in through admin view, ensure user has an admin role
     const userRole = getNormalizedRole(profile.role);
     const isAuthorizedAdmin = userRole === 'SYSTEM_ADMIN' || userRole === 'ADMIN' || userRole === 'SUP_ADMIN';
+    const isSuperAdmin = userRole === 'SYSTEM_ADMIN' || userRole === 'SUP_ADMIN';
+    
+    // Check if account is validated and active
+    if (!isSuperAdmin && profile.status !== "ACTIVE") {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-96 h-96 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2 bg-yellow-500/10" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 blur-[100px] rounded-full translate-y-1/2 -translate-x-1/2 bg-amber-500/10" />
+
+          <div className="w-full max-w-md relative z-10">
+            {/* Language Switcher */}
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-full shadow-sm">
+                <button 
+                  onClick={() => setLanguage('en')}
+                  className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all ${language === 'en' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                >EN</button>
+                <button 
+                  onClick={() => setLanguage('fr')}
+                  className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all ${language === 'fr' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                >FR</button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 p-10 shadow-2xl shadow-yellow-500/5 relative overflow-hidden font-sans">
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-500" />
+              
+              <div className="mb-8 flex flex-col items-center text-center">
+                <div className="w-20 h-20 bg-amber-50 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-amber-500/5 ring-4 ring-amber-100/50 animate-pulse">
+                  <Activity className="w-10 h-10 text-amber-500 animate-spin" style={{ animationDuration: '6s' }} />
+                </div>
+                
+                <h1 className="text-2xl font-serif italic font-bold text-slate-800 tracking-tight">
+                  {language === 'fr' ? "Validation en attente" : "Validation Pending"}
+                </h1>
+                
+                <div className="mt-4 px-4 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-[9px] font-mono font-bold uppercase rounded-full tracking-wider">
+                  {language === 'fr' ? "Compte créé" : "Account Created"}
+                </div>
+              </div>
+
+              <div className="space-y-4 mb-8 bg-slate-50 border border-slate-100 p-5 rounded-2xl">
+                <div>
+                  <span className="block text-[9px] uppercase font-mono tracking-widest text-slate-400">
+                    {language === 'fr' ? "Nom complet" : "Full Name"}
+                  </span>
+                  <span className="text-sm font-bold text-slate-700">{profile.fullName || profile.name}</span>
+                </div>
+                
+                <div>
+                  <span className="block text-[9px] uppercase font-mono tracking-widest text-slate-400">
+                    {language === 'fr' ? "Nom d'utilisateur assigné" : "Assigned Username"}
+                  </span>
+                  <div className="flex flex-col gap-1 mt-0.5">
+                    <span className="text-sm font-mono font-bold bg-white border border-slate-200 px-2 py-1.5 rounded text-blue-600 block w-fit shadow-sm">
+                      {profile.username}
+                    </span>
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tight">
+                      {language === 'fr' ? "(Utilisez-le pour vos prochaines connexions)" : "(Use this to log in next time)"}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[9px] uppercase font-mono tracking-widest text-slate-400">
+                    {language === 'fr' ? "Rôle désigné" : "Designated Role"}
+                  </span>
+                  <span className="text-xs uppercase font-bold text-slate-600">{profile.role ? t(profile.role.toUpperCase()) : t("Staff")}</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed text-center mb-8 font-medium">
+                {language === 'fr' 
+                  ? "Votre compte a été créé avec succès. Néanmoins, un Super-Administrateur doit valider et approuver votre compte avant que vous ne puissiez l'utiliser. Une fois validé, vous pourrez changer votre mot de passe depuis votre page profil."
+                  : "Your account has been set up successfully. However, a Super-Administrator must validate and approve your account before you can start using it. Once validated, you'll be able to change your password from your profile page."}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="w-full h-11 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 rounded-xl transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-[10px] active:scale-[0.98]"
+              >
+                {language === 'fr' ? "Retour à la connexion" : "Back to Login"}
+              </button>
+
+              <div className="mt-8 pt-6 border-t border-slate-100 text-[9px] font-bold text-slate-300 uppercase flex justify-between tracking-widest">
+                <span className="flex items-center gap-1"><Activity className="w-3 h-3 text-amber-400" /> SECURE_PENDING</span>
+                <span>STATUS: HOLD</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
     
     if (isAdminView && !isAuthorizedAdmin) {
       // Not an admin, sign out and show error
