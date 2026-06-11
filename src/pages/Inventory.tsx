@@ -27,7 +27,8 @@ import {
   Clock,
   ArrowDownCircle,
   ArrowUpCircle,
-  X as CloseIcon
+  X as CloseIcon,
+  Printer
 } from "lucide-react";
 
 export default function Inventory() {
@@ -195,14 +196,23 @@ export default function Inventory() {
           <h1 className="text-2xl sm:text-4xl font-serif italic font-bold tracking-tight mb-2 uppercase">{t("inventory")}</h1>
           <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">SUPPLY_CHAIN / ASSET_TRACKING</p>
         </div>
-        {canAddArticle && (
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <button 
-            onClick={openAddModal}
-            className="h-10 bg-slate-900 text-white px-6 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:bg-slate-800 transition-all border border-slate-200 shadow-sm w-full sm:w-auto"
+            type="button" 
+            onClick={() => window.print()}
+            className="h-10 bg-slate-800 text-white px-6 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:bg-slate-900 transition-all border border-app-line select-none cursor-pointer"
           >
-            <Plus className="w-4 h-4" /> {t("addStockItem")}
+            <Printer className="w-4 h-4 shrink-0" /> {t("printList")}
           </button>
-        )}
+          {canAddArticle && (
+            <button 
+              onClick={openAddModal}
+              className="h-10 bg-slate-900 text-white px-6 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:bg-slate-800 transition-all border border-slate-200 shadow-sm cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> {t("addStockItem")}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -470,6 +480,64 @@ export default function Inventory() {
           </div>
         </div>
       )}
+
+      {/* PRINT-ONLY EXCEL-LIKE SPREADSHEET CONTAINER */}
+      <div className="hidden print:block w-full bg-white text-slate-950 p-6 min-h-screen">
+        <div className="flex justify-between items-end border-b-2 border-slate-900 pb-3 mb-4">
+          <div>
+            <h1 className="text-xl font-bold font-mono tracking-tight uppercase leading-none">HealthOne Hospital Network</h1>
+            <p className="text-sm font-mono uppercase tracking-widest text-slate-700 font-bold mt-2">
+              {profile?.hospital?.name || profile?.hospitalName || (typeof profile?.hospital === 'string' ? profile.hospital : "Hospital")}
+            </p>
+            <p className="text-[10px] font-mono mt-1 text-slate-500 font-bold uppercase tracking-wider">
+              {language === 'fr' ? "STATUT DES STOCKS ET INVENTAIRE PHARMACEUTIQUE" : "PHARMACEUTICAL ASSETS & INVENTORY STATUS LOGS"}
+            </p>
+          </div>
+          <div className="text-right text-xs font-mono">
+            <p className="font-bold">EXPORTED: {new Date().toLocaleDateString()}</p>
+            <p className="text-slate-500 mt-1 font-bold">{filteredItems.length} ROWS</p>
+          </div>
+        </div>
+
+        <table className="excel-table">
+          <thead>
+            <tr>
+              <th className="w-12">#</th>
+              <th>{language === 'fr' ? "Nom de l'Article" : "Item Name"}</th>
+              <th>{language === 'fr' ? "Catégorie / Type" : "Category / Type"}</th>
+              <th>{t("stockLevel") || "Stock level"}</th>
+              <th>{language === 'fr' ? "Statut" : "Status"}</th>
+              <th>{language === 'fr' ? "Seuil Minimum" : "Min Threshold"}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredItems.map((item, idx) => (
+              <tr key={item.id}>
+                <td className="font-mono text-[10px]">{idx + 1}</td>
+                <td className="font-bold">{item.name}</td>
+                <td className="uppercase font-mono text-[10px]">{t(item.type.toLowerCase())}</td>
+                <td className="font-mono font-bold">
+                  {item.stock} <span className="text-[10px] uppercase">{item.unit || "units"}</span>
+                </td>
+                <td className="font-mono text-[10px] uppercase font-bold">
+                  {item.stock <= item.minStock ? (
+                    <span className="text-red-600">{language === 'fr' ? "Alerte de Stock" : "Low Stock"}</span>
+                  ) : (
+                    <span className="text-emerald-700 font-bold">OK</span>
+                  )}
+                </td>
+                <td className="font-mono text-slate-500">{item.minStock}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Footer for Excel Sheet */}
+        <div className="print-footer">
+          <span>HealthOne</span>
+          <span>Jerttech</span>
+        </div>
+      </div>
     </div>
   );
 }

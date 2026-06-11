@@ -44,3 +44,89 @@ body {
 .medical-gradient {
   background: linear-gradient(135deg, #10B981 0%, #3B82F6 100%);
 }
+
+/* @media print custom rules */
+@media print {
+  body, html {
+    background-color: white !important;
+    background: white !important;
+    color: black !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  
+  /* Hide all generic interaction UI */
+  nav, header, aside, button, .no-print, input, select, .modal, .toast, [role="button"], a {
+    display: none !important;
+  }
+  
+  /* Reset container layout on print */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    overflow: visible !important;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .hidden.print\:block {
+    display: block !important;
+  }
+
+  .hidden.print\:flex {
+    display: flex !important;
+  }
+
+  /* Excel spreadsheet-like list view */
+  .excel-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-top: 15px !important;
+    margin-bottom: 50px !important;
+  }
+
+  .excel-table th {
+    background-color: #f3f4f6 !important;
+    border: 1px solid #111827 !important;
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace !important;
+    font-size: 10px !important;
+    font-weight: bold !important;
+    text-transform: uppercase !important;
+    padding: 8px 10px !important;
+    color: #111827 !important;
+    text-align: left !important;
+  }
+
+  .excel-table td {
+    border: 1px solid #111827 !important;
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif !important;
+    font-size: 11px !important;
+    padding: 8px 10px !important;
+    color: #111827 !important;
+    background-color: white !important;
+  }
+
+  .excel-table tr:nth-child(even) td {
+    background-color: #f9fafb !important;
+  }
+
+  .print-footer {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace !important;
+    font-size: 10px !important;
+    border-top: 1px solid #374151 !important;
+    padding-top: 8px !important;
+    color: #111827 !important;
+    background-color: white !important;
+    z-index: 9999 !important;
+  }
+}
+

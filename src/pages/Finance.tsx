@@ -24,7 +24,8 @@ import {
   Receipt,
   Download,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Printer
 } from "lucide-react";
 import { format } from "date-fns";
 import { getNormalizedRole } from "../lib/utils";
@@ -379,16 +380,23 @@ export default function Finance() {
            <div className="bg-white border border-app-line px-5 py-2.5 flex flex-col justify-center min-w-[145px] sm:min-w-[170px] flex-1">
              <span className="col-header text-[9px] uppercase font-mono tracking-wider opacity-60">{language === 'fr' ? "Total Quotidien (FC)" : "Daily Total (FC)"}</span>
              <span className="font-mono font-bold text-xl sm:text-2xl tracking-tighter text-emerald-700">{totalCDF.toLocaleString()} FC</span>
-             <span className="font-mono text-[10px] text-emerald-600/80 mt-0.5">
+             <span className="font-mono text-[10px] text-slate-600/80 mt-0.5">
                ≈ ${Math.round((totalCDF / USD_TO_FC) * 100) / 100} USD
              </span>
            </div>
            <button 
-            onClick={() => setShowAddModal(true)}
-            className="flex-1 lg:flex-none h-auto lg:h-[70px] bg-app-ink text-app-bg px-8 py-3 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:opacity-90 transition-all border border-app-line whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4 shrink-0" /> {t("recordPayment")}
-          </button>
+             type="button" 
+             onClick={() => window.print()}
+             className="flex-1 lg:flex-none h-auto lg:h-[70px] bg-slate-800 text-white px-6 py-3 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:bg-slate-900 transition-all border border-app-line whitespace-nowrap select-none cursor-pointer"
+           >
+             <Printer className="w-4 h-4 shrink-0" /> {t("printList")}
+           </button>
+           <button 
+             onClick={() => setShowAddModal(true)}
+             className="flex-1 lg:flex-none h-auto lg:h-[70px] bg-app-ink text-app-bg px-8 py-3 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:opacity-90 transition-all border border-app-line whitespace-nowrap cursor-pointer select-none"
+           >
+             <Plus className="w-4 h-4 shrink-0" /> {t("recordPayment")}
+           </button>
         </div>
       </div>
 
@@ -826,6 +834,71 @@ export default function Finance() {
           </div>
         </div>
       )}
+
+      {/* PRINT-ONLY EXCEL-LIKE SPREADSHEET CONTAINER */}
+      <div className="hidden print:block w-full bg-white text-slate-950 p-6 min-h-screen">
+        <div className="flex justify-between items-end border-b-2 border-slate-900 pb-3 mb-4">
+          <div>
+            <h1 className="text-xl font-bold font-mono tracking-tight uppercase leading-none">HealthOne Hospital Network</h1>
+            <p className="text-sm font-mono uppercase tracking-widest text-slate-700 font-bold mt-2">
+              {profile?.hospital?.name || profile?.hospitalName || (typeof profile?.hospital === 'string' ? profile.hospital : "Hospital")}
+            </p>
+            <p className="text-[10px] font-mono mt-1 text-slate-500 font-bold uppercase tracking-wider">
+              {language === 'fr' ? "JOURNAL DES TRANSACTIONS FINANCIERES" : "FINANCIAL TRANSACTION JOURNAL LOGS"}
+            </p>
+          </div>
+          <div className="text-right text-xs font-mono">
+            <p className="font-bold">EXPORTED: {new Date().toLocaleDateString()}</p>
+            <p className="text-slate-500 mt-1 font-bold">{mergedPayments.length} ROWS</p>
+          </div>
+        </div>
+
+        <table className="excel-table">
+          <thead>
+            <tr>
+              <th className="w-12">#</th>
+              <th>{t("timestamp") || "Date"}</th>
+              <th>{t("patientName") || "Patient Name"}</th>
+              <th>{language === 'fr' ? "Référence" : "Reference"}</th>
+              <th>{t("method") || "Method"}</th>
+              <th>{t("amount") || "Amount"}</th>
+              <th>{t("status") || "Status"}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mergedPayments.map((p, idx) => {
+              const isFC = p.currency === "FC" || p.currency === "CDF" || p.currency === "CFC";
+              const amountFormatted = isFC 
+                ? `${Number(p.amount).toLocaleString()} FC` 
+                : `$${Number(p.amount).toLocaleString()} USD`;
+              const altFormatted = isFC 
+                ? `$${Math.round((Number(p.amount) / 2200) * 100) / 100} USD`
+                : `${(Number(p.amount) * 2200).toLocaleString()} FC`;
+                
+              return (
+                <tr key={p.id}>
+                  <td className="font-mono text-[10px]">{idx + 1}</td>
+                  <td className="font-mono text-[10px]">{getFormatDate(p.createdAt)}</td>
+                  <td className="font-bold">{p.patientName}</td>
+                  <td className="font-mono text-[10px]">{p.reference || "—"}</td>
+                  <td className="uppercase font-mono text-[10px]">{p.method || "CASH"}</td>
+                  <td>
+                    <div className="font-bold">{amountFormatted}</div>
+                    <div className="text-[9px] text-slate-500">≈ {altFormatted}</div>
+                  </td>
+                  <td className="font-mono font-bold uppercase text-[10px]">{p.status || "PAID"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {/* Footer for Excel Sheet */}
+        <div className="print-footer">
+          <span>HealthOne</span>
+          <span>Jerttech</span>
+        </div>
+      </div>
     </div>
   );
 }

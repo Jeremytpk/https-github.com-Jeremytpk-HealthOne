@@ -28,7 +28,8 @@ import {
   Clock,
   KeyRound,
   ShieldAlert,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Printer
 } from "lucide-react";
 import { UserRole, UserStatus, getNormalizedRole, generateUsernameFromName } from "../lib/utils";
 import { initializeApp, deleteApp } from "firebase/app";
@@ -306,12 +307,21 @@ export default function StaffManagement() {
           <h1 className="text-2xl sm:text-4xl font-serif italic font-bold tracking-tight mb-2 uppercase">{t("staffManagement")}</h1>
           <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">HR_MODULE / PERSONNEL_LOGS</p>
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="h-10 bg-app-ink text-app-bg px-6 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:opacity-90 transition-all border border-app-line w-full sm:w-auto"
-        >
-          <UserPlus className="w-4 h-4" /> {t("staff")} [{t("newRegistration").toUpperCase()}]
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <button 
+            type="button" 
+            onClick={() => window.print()}
+            className="h-10 bg-slate-800 text-white px-6 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:bg-slate-900 transition-all border border-app-line select-none cursor-pointer"
+          >
+            <Printer className="w-4 h-4 shrink-0" /> {t("printList")}
+          </button>
+          <button 
+            onClick={() => setShowAddModal(true)}
+            className="h-10 bg-app-ink text-app-bg px-6 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:opacity-90 transition-all border border-app-line cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" /> {t("staff")} [{t("newRegistration").toUpperCase()}]
+          </button>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -570,6 +580,60 @@ export default function StaffManagement() {
           role={t(viewingStaffSchedule.role)}
         />
       )}
+
+      {/* PRINT-ONLY EXCEL-LIKE SPREADSHEET CONTAINER */}
+      <div className="hidden print:block w-full bg-white text-slate-950 p-6 min-h-screen">
+        <div className="flex justify-between items-end border-b-2 border-slate-900 pb-3 mb-4">
+          <div>
+            <h1 className="text-xl font-bold font-mono tracking-tight uppercase leading-none">HealthOne Hospital Network</h1>
+            <p className="text-sm font-mono uppercase tracking-widest text-slate-700 font-bold mt-2">
+              {profile?.hospital?.name || profile?.hospitalName || (typeof profile?.hospital === 'string' ? profile.hospital : "Hospital")}
+            </p>
+            <p className="text-[10px] font-mono mt-1 text-slate-500 font-bold uppercase tracking-wider">
+              {language === 'fr' ? "LISTE GENERALE DU PERSONNEL ACCOMPAGNANT" : "GENERAL CLINICAL STAFF LOGS"}
+            </p>
+          </div>
+          <div className="text-right text-xs font-mono">
+            <p className="font-bold">EXPORTED: {new Date().toLocaleDateString()}</p>
+            <p className="text-slate-500 mt-1 font-bold">{filteredStaff.length} ROWS</p>
+          </div>
+        </div>
+
+        <table className="excel-table">
+          <thead>
+            <tr>
+              <th className="w-12">#</th>
+              <th>{language === 'fr' ? "Nom Complet" : "Full Name"}</th>
+              <th>{t("role") || "Role"}</th>
+              <th>{language === 'fr' ? "Nom d'Utilisateur" : "Username"}</th>
+              <th>{t("status") || "Status"}</th>
+              <th>{t("schedules") || "Weekly Schedule"}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredStaff.map((s, idx) => (
+              <tr key={s.id}>
+                <td className="font-mono text-[10px]">{idx + 1}</td>
+                <td className="font-bold">{s.fullName || s.name || "—"}</td>
+                <td className="uppercase font-mono text-[10px]">{t(s.role)}</td>
+                <td className="font-mono text-[10px]">{s.username ? `@${s.username}` : "—"}</td>
+                <td className="uppercase font-mono text-[10px]">{t(s.status)}</td>
+                <td>
+                  <span className="text-[10px] font-mono">
+                    {(s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']).join(", ")}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Footer for Excel Sheet */}
+        <div className="print-footer">
+          <span>HealthOne</span>
+          <span>Jerttech</span>
+        </div>
+      </div>
     </div>
   );
 }

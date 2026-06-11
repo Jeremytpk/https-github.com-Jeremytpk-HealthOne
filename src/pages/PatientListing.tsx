@@ -15,7 +15,7 @@ import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useOfflineSync } from "../contexts/OfflineSyncContext";
-import { Search, UserPlus, ArrowRight, User, Trash2, AlertCircle, RefreshCw } from "lucide-react";
+import { Search, UserPlus, ArrowRight, User, Trash2, AlertCircle, RefreshCw, Printer } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getNormalizedRole } from "../lib/utils";
 
@@ -241,15 +241,24 @@ export default function PatientListing() {
             {t("managingRecords").replace("{count}", patients.length.toString())}
           </p>
         </div>
-        {canAddPatient && (
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <button 
-            onClick={() => setShowRegModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 w-full sm:w-auto"
+            onClick={() => window.print()}
+            className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 w-full sm:w-auto font-mono uppercase tracking-widest select-none cursor-pointer"
           >
-            <UserPlus className="w-4 h-4" />
-            {t("registerPatient")}
+            <Printer className="w-4 h-4 shrink-0" />
+            {t("printList")}
           </button>
-        )}
+          {canAddPatient && (
+            <button 
+              onClick={() => setShowRegModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 w-full sm:w-auto shrink-0 cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              {t("registerPatient")}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -548,6 +557,56 @@ export default function PatientListing() {
           </div>
         </div>
       )}
+
+      {/* PRINT-ONLY EXCEL-LIKE SPREADSHEET CONTAINER */}
+      <div className="hidden print:block w-full bg-white text-slate-950 p-6 min-h-screen">
+        <div className="flex justify-between items-end border-b-2 border-slate-900 pb-3 mb-4">
+          <div>
+            <h1 className="text-xl font-bold font-mono tracking-tight uppercase leading-none">HealthOne Hospital Network</h1>
+            <p className="text-sm font-mono uppercase tracking-widest text-slate-700 font-bold mt-2">
+              {profile?.hospital?.name || profile?.hospitalName || (typeof profile?.hospital === 'string' ? profile.hospital : "Hospital")}
+            </p>
+            <p className="text-[10px] font-mono mt-1 text-slate-500 font-bold uppercase tracking-wider">
+              {language === 'fr' ? "REGISTRE GENERAL DES PATIENTS" : "GENERAL PATIENTS REGISTRY LOGS"}
+            </p>
+          </div>
+          <div className="text-right text-xs font-mono">
+            <p className="font-bold">EXPORTED: {new Date().toLocaleDateString()}</p>
+            <p className="text-slate-500 mt-1 font-bold">{filteredPatients.length} ROWS</p>
+          </div>
+        </div>
+
+        <table className="excel-table">
+          <thead>
+            <tr>
+              <th className="w-12">#</th>
+              <th>{t("patientName") || "Patient Name"}</th>
+              <th>{language === 'fr' ? "Genre" : "Gender"}</th>
+              <th>{language === 'fr' ? "Né(e) Le" : "Date of Birth"}</th>
+              <th>{language === 'fr' ? "Téléphone" : "Phone"}</th>
+              <th>{language === 'fr' ? "Département" : "Department"}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredPatients.map((p, idx) => (
+              <tr key={p.id}>
+                <td className="font-mono text-[10px]">{idx + 1}</td>
+                <td className="font-bold">{p.firstName} {p.lastName}</td>
+                <td className="uppercase">{t(p.gender?.toUpperCase() || 'OTHER')}</td>
+                <td>{p.dateOfBirth || "—"}</td>
+                <td className="font-mono">{p.phone || "—"}</td>
+                <td className="font-mono uppercase">{p.department || "GEN_MEDICINE"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Footer for Excel Sheet */}
+        <div className="print-footer">
+          <span>HealthOne</span>
+          <span>Jerttech</span>
+        </div>
+      </div>
     </div>
   );
 }
