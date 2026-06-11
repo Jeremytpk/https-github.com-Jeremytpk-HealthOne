@@ -8,7 +8,8 @@ import {
   updateDoc, 
   doc, 
   serverTimestamp,
-  increment
+  increment,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -105,15 +106,21 @@ export default function Inventory() {
   }, [profile?.role, isPharmacie]);
 
   useEffect(() => {
-    if (hospitalId) fetchItems();
+    if (!hospitalId) return;
+    setLoading(true);
+    const q = query(collection(db, "inventory"), where("hospitalId", "==", hospitalId));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching inventory via onSnapshot:", err);
+      setLoading(false);
+    });
+    return () => unsubscribe();
   }, [hospitalId]);
 
   const fetchItems = async () => {
-    setLoading(true);
-    const q = query(collection(db, "inventory"), where("hospitalId", "==", hospitalId));
-    const querySnapshot = await getDocs(q);
-    setItems(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    setLoading(false);
+    // Handled in real time by onSnapshot subscription
   };
 
   const adjustStock = async (itemId: string, amount: number) => {

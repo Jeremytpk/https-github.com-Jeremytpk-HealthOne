@@ -271,7 +271,7 @@ const translations: Record<Language, Record<string, string>> = {
     profileUpdateError: "Error updating profile",
     editUserInformation: "Edit User Information",
     profileSettings: "Profile Settings",
-    REGISTER: "Registrar",
+    REGISTER: "Reception/ Caisse",
     recentlyAdded: "Recently Added",
     now: "NOW",
     justNow: "JUST NOW",
@@ -282,7 +282,9 @@ const translations: Record<Language, Record<string, string>> = {
     emergencyDept: "Emergency",
     cardiologyDept: "Cardiology",
     deletePatientMsg: "Are you sure you want to delete this patient profile? This action is irreversible.",
-    deletePatient: "Delete Patient"
+    deletePatient: "Delete Patient",
+    privacy: "Privacy Policy",
+    termsAndConditions: "Terms & Conditions"
   },
   fr: {
     dashboard: "Tableau de Bord",
@@ -546,7 +548,7 @@ const translations: Record<Language, Record<string, string>> = {
     profileUpdateError: "Erreur lors de la mise à jour du profil",
     editUserInformation: "Modifier les informations de l'utilisateur",
     profileSettings: "Paramètres du profil",
-    REGISTER: "Registrateur",
+    REGISTER: "Reception/ Caisse",
     recentlyAdded: "Récemment ajouté",
     now: "MAINTENANT",
     justNow: "À L'INSTANT",
@@ -557,7 +559,9 @@ const translations: Record<Language, Record<string, string>> = {
     emergencyDept: "Urgences",
     cardiologyDept: "Cardiologie",
     deletePatientMsg: "Êtes-vous sûr de vouloir supprimer cette fiche patient ? Cette action est irréversible.",
-    deletePatient: "Supprimer le Patient"
+    deletePatient: "Supprimer le Patient",
+    privacy: "Confidentialité",
+    termsAndConditions: "Conditions Générales"
   },
 };
 

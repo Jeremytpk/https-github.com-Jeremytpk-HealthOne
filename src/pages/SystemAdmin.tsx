@@ -7,7 +7,9 @@ import {
   serverTimestamp,
   doc,
   setDoc,
-  updateDoc
+  updateDoc,
+  deleteDoc,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -28,7 +30,8 @@ import {
   TrendingUp,
   Percent,
   Receipt,
-  Scale
+  Scale,
+  Trash2
 } from "lucide-react";
 import { UserRole, getNormalizedRole } from "../lib/utils";
 import { initializeApp, deleteApp } from "firebase/app";
@@ -121,26 +124,66 @@ export default function SystemAdmin() {
   });
 
   useEffect(() => {
-    fetchHospitals();
-    fetchUsers();
-    fetchPaymentsAndPatients();
+    // 1. Transient data loading states
+    setLoadingPayments(true);
+    setLoadingUsers(true);
+
+    // 2. Real-time payments and patients
+    const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
+      const fetchedPayments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPayments(fetchedPayments);
+      setLoadingPayments(false);
+    }, (err) => {
+      console.error("Error fetching admin payments in real-time:", err);
+      setLoadingPayments(false);
+    });
+
+    const unsubPatients = onSnapshot(collection(db, "patients"), (snapshot) => {
+      const fetchedPatients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPatients(fetchedPatients);
+    }, (err) => {
+      console.error("Error fetching admin patients in real-time:", err);
+    });
+
+    // 3. Real-time users list
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      const fetchedUsers: any[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUsers(fetchedUsers);
+      
+      const rolesInputMap: { [userId: string]: string } = {};
+      fetchedUsers.forEach(u => {
+        rolesInputMap[u.id] = u.role || "NURSE";
+      });
+      setUserRolesInput(rolesInputMap);
+      setLoadingUsers(false);
+    }, (err) => {
+      console.error("Error fetching admin users in real-time:", err);
+      setLoadingUsers(false);
+    });
+
+    // 4. Real-time hospitals & config trigger
+    const unsubHospitalsList = onSnapshot(collection(db, "hospitals"), () => {
+      fetchHospitals();
+    });
+    const unsubHealthOne = onSnapshot(collection(db, "healthone"), () => {
+      fetchHospitals();
+    });
+    const unsubHealthOneHospitals = onSnapshot(collection(db, "healthone_hospitals"), () => {
+      fetchHospitals();
+    });
+
+    return () => {
+      unsubPayments();
+      unsubPatients();
+      unsubUsers();
+      unsubHospitalsList();
+      unsubHealthOne();
+      unsubHealthOneHospitals();
+    };
   }, []);
 
   const fetchPaymentsAndPatients = async () => {
-    setLoadingPayments(true);
-    try {
-      const paySnap = await getDocs(collection(db, "payments"));
-      const fetchedPayments = paySnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPayments(fetchedPayments);
-
-      const patSnap = await getDocs(collection(db, "patients"));
-      const fetchedPatients = patSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPatients(fetchedPatients);
-    } catch (err) {
-      console.error("Error fetching admin payments/patients:", err);
-    } finally {
-      setLoadingPayments(false);
-    }
+    // Handled in real time by onSnapshot subscription
   };
 
   const fetchHospitals = async () => {
@@ -265,6 +308,26 @@ export default function SystemAdmin() {
             });
           }
         });
+
+        // Fetch from nested healthone collection inside healthone_hospitals collection
+        try {
+          const nestedSnap = await getDocs(collection(db, "healthone_hospitals", "healthone", "healthone"));
+          nestedSnap.docs.forEach(docSnap => {
+            const rawData = docSnap.data();
+            if (rawData && rawData.name && !uniqueHospitalsMap.has(docSnap.id)) {
+              uniqueHospitalsMap.set(docSnap.id, {
+                id: docSnap.id,
+                name: rawData.name,
+                address: rawData.address || "No Address Provided",
+                email: rawData.email || "",
+                phone: rawData.phone || "",
+                hospitalId: rawData.hospitalId || docSnap.id
+              });
+            }
+          });
+        } catch (nestedErr) {
+          console.error("Error fetching nested healthone collection inside healthone_hospitals:", nestedErr);
+        }
       } catch (err) {
         console.error("Error fetching from healthone_hospitals collection:", err);
       }
@@ -299,22 +362,7 @@ export default function SystemAdmin() {
   };
 
   const fetchUsers = async () => {
-    setLoadingUsers(true);
-    try {
-      const querySnapshot = await getDocs(collection(db, "users"));
-      const fetchedUsers: any[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setUsers(fetchedUsers);
-      
-      const rolesInputMap: { [userId: string]: string } = {};
-      fetchedUsers.forEach(u => {
-        rolesInputMap[u.id] = u.role || "NURSE";
-      });
-      setUserRolesInput(rolesInputMap);
-    } catch (err) {
-      console.error("Error fetching users:", err);
-    } finally {
-      setLoadingUsers(false);
-    }
+    // Handled in real time by onSnapshot subscription
   };
 
   const handleAddHospital = async (e: React.FormEvent) => {
@@ -345,6 +393,17 @@ export default function SystemAdmin() {
 
       // 3. Add inside healthone_hospitals collection with Hospital ID
       await setDoc(doc(db, "healthone_hospitals", generatedHospitalId), {
+        name: hospitalForm.name,
+        address: hospitalForm.address,
+        email: hospitalForm.email || "",
+        contactEmail: hospitalForm.email || "",
+        phone: hospitalForm.phone || "",
+        hospitalId: generatedHospitalId,
+        createdAt: serverTimestamp()
+      });
+
+      // 4. Add inside healthone collection inside healthone_hospitals collection
+      await setDoc(doc(db, "healthone_hospitals", "healthone", "healthone", generatedHospitalId), {
         name: hospitalForm.name,
         address: hospitalForm.address,
         email: hospitalForm.email || "",
@@ -511,6 +570,7 @@ export default function SystemAdmin() {
       await setDoc(doc(db, "hospitals", hId), payload, { merge: true });
       await setDoc(doc(db, "healthone", hId), { ...payload, hospitalId: hId }, { merge: true });
       await setDoc(doc(db, "healthone_hospitals", hId), { ...payload, hospitalId: hId }, { merge: true });
+      await setDoc(doc(db, "healthone_hospitals", "healthone", "healthone", hId), { ...payload, hospitalId: hId }, { merge: true });
 
       alert(language === 'fr' 
         ? "Informations de l'établissement mises à jour avec succès !" 
@@ -520,6 +580,75 @@ export default function SystemAdmin() {
     } catch (err: any) {
       console.error("Error updating hospital details:", err);
       alert("Failed to update hospital: " + err.message);
+    }
+  };
+
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: 'user' | 'hospital';
+    id: string;
+    name: string;
+  } | null>(null);
+  const [isDeletingLoading, setIsDeletingLoading] = useState(false);
+
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    if (userRole !== "SUP_ADMIN" && userRole !== "SYSTEM_ADMIN") {
+      alert(language === 'fr' 
+        ? "Action non autorisée. Seul le Super Administrateur (SUP_ADMIN) est autorisé à supprimer un compte." 
+        : "Unauthorized action. Only the Super Administrator (SUP_ADMIN) is allowed to delete user accounts.");
+      return;
+    }
+    setDeleteConfirm({
+      type: 'user',
+      id: userId,
+      name: userName
+    });
+  };
+
+  const handleDeleteHospital = async (hospitalId: string, hospitalName: string) => {
+    if (userRole !== "SUP_ADMIN" && userRole !== "SYSTEM_ADMIN") {
+      alert(language === 'fr' 
+        ? "Action non autorisée. Seul le Super Administrateur (SUP_ADMIN) est autorisé à supprimer un établissement." 
+        : "Unauthorized action. Only the Super Administrator (SUP_ADMIN) is allowed to delete a tenant.");
+      return;
+    }
+    setDeleteConfirm({
+      type: 'hospital',
+      id: hospitalId,
+      name: hospitalName
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+    setIsDeletingLoading(true);
+    try {
+      if (deleteConfirm.type === 'user') {
+        await deleteDoc(doc(db, "users", deleteConfirm.id));
+        alert(language === 'fr'
+          ? "Compte d'utilisateur supprimé avec succès."
+          : "User account successfully deleted.");
+        setSelectedEditUser(null);
+        fetchUsers();
+      } else if (deleteConfirm.type === 'hospital') {
+        await deleteDoc(doc(db, "hospitals", deleteConfirm.id));
+        await deleteDoc(doc(db, "healthone", deleteConfirm.id));
+        await deleteDoc(doc(db, "healthone_hospitals", deleteConfirm.id));
+        await deleteDoc(doc(db, "healthone_hospitals", "healthone", "healthone", deleteConfirm.id));
+
+        alert(language === 'fr'
+          ? "Établissement supprimé avec succès."
+          : "Tenant deleted successfully.");
+        setSelectedEditHospital(null);
+        fetchHospitals();
+      }
+    } catch (error: any) {
+      console.error("Error executing delete:", error);
+      alert(language === 'fr'
+        ? "Échec de la suppression: " + error.message
+        : "Failed to delete: " + error.message);
+    } finally {
+      setIsDeletingLoading(false);
+      setDeleteConfirm(null);
     }
   };
 
@@ -980,6 +1109,8 @@ export default function SystemAdmin() {
     const list: any[] = [];
     
     users.forEach(u => {
+      if (u.isLocalStaff) return; // Skip notification for local physical staff record accounts
+
       const date = u.createdAt?.toDate ? u.createdAt.toDate() : u.createdAt ? new Date(u.createdAt) : new Date();
       list.push({
         id: `user-${u.id}`,
@@ -1533,17 +1664,34 @@ export default function SystemAdmin() {
                     className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors group cursor-pointer"
                     title={language === 'fr' ? "Cliquez pour modifier les détails du tenant" : "Click to edit tenant details"}
                   >
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <h3 className="font-bold uppercase tracking-tight truncate text-sm text-slate-800 group-hover:text-amber-700 transition-colors">{h.name}</h3>
                       <p className="text-[10px] font-mono opacity-60 truncate">{h.address}</p>
                       {h.email && <p className="text-[10px] font-mono opacity-50 truncate">Email: {h.email}</p>}
                       {h.phone && <p className="text-[10px] font-mono opacity-50 truncate">Phone: {h.phone}</p>}
                       <p className="text-[10px] font-mono opacity-40 mt-1">Tenant ID: {h.id}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-mono opacity-0 group-hover:opacity-100 transition-opacity bg-amber-50 text-amber-700 px-1.5 py-0.5 border border-amber-200">
+                    <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button 
+                        onClick={() => handleOpenEditHospital(h)}
+                        className="text-[9px] font-mono opacity-0 group-hover:opacity-100 transition-opacity bg-amber-50 text-amber-700 hover:bg-amber-100 px-1.5 py-0.5 border border-amber-200 rounded-sm"
+                      >
                         {language === 'fr' ? "MODIFIER" : "EDIT"}
-                      </span>
+                      </button>
+                      
+                      {(userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN") && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteHospital(h.id, h.name);
+                          }}
+                          className="p-1 text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded transition-all"
+                          title={language === 'fr' ? "Supprimer le tenant" : "Delete tenant"}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+
                       <UserCheck className="w-4 h-4 opacity-10 group-hover:opacity-100 transition-opacity shrink-0 text-green-600" />
                     </div>
                   </div>
@@ -1635,6 +1783,15 @@ export default function SystemAdmin() {
                     >
                       <div className="flex items-center flex-wrap gap-2">
                         <span className="font-bold text-slate-800 text-sm group-hover:text-blue-700 transition-colors">{u.name || "Unnamed user"}</span>
+                        {u.isLocalStaff ? (
+                          <span className="text-[8px] font-mono bg-slate-100 text-slate-650 border border-slate-300 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+                            {language === 'fr' ? "Pers. Simple" : "Local Rec"}
+                          </span>
+                        ) : (
+                          <span className="text-[8px] font-mono bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+                            HealthOne
+                          </span>
+                        )}
                         <span className="text-[9px] font-mono border border-app-line px-1.5 py-0.5 bg-slate-100 text-slate-600 uppercase tracking-widest">{userRole}</span>
                         {u.status === "PENDING_APPROVAL" ? (
                           <span className="text-[8px] font-mono bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
@@ -1691,6 +1848,18 @@ export default function SystemAdmin() {
                         >
                           <UserCheck className="w-3.5 h-3.5" />
                           APPROVE
+                        </button>
+                      )}
+
+                      {(userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN") && (
+                        <button
+                          onClick={() => handleDeleteUser(u.id, u.name || u.username || u.email || "User")}
+                          disabled={isUpdating}
+                          className={`h-9 border border-rose-200 hover:bg-rose-50 text-rose-600 px-3 flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-widest transition-all ${isUpdating ? "opacity-50 cursor-not-allowed" : ""}`}
+                          title={language === 'fr' ? "Supprimer définitivement le compte d'utilisateur" : "Permanently delete user account"}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          {language === 'fr' ? "SUPPRIMER" : "DELETE"}
                         </button>
                       )}
                     </div>
@@ -2177,6 +2346,16 @@ export default function SystemAdmin() {
               </div>
 
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 mt-8 pt-4 border-t border-app-line">
+                {(userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN") && (
+                  <button 
+                    type="button" 
+                    onClick={() => handleDeleteUser(selectedEditUser.id, selectedEditUser.name || selectedEditUser.username || selectedEditUser.email || "User")}
+                    className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-mono text-[10px] uppercase tracking-widest transition-colors sm:mr-auto flex items-center justify-center gap-1.5 rounded-sm"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {language === 'fr' ? "SUPPRIMER" : "DELETE"}
+                  </button>
+                )}
                 <button 
                   type="button" 
                   onClick={() => setSelectedEditUser(null)} 
@@ -2247,6 +2426,16 @@ export default function SystemAdmin() {
               </div>
 
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 mt-8 pt-4 border-t border-app-line">
+                {(userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN") && (
+                  <button 
+                    type="button" 
+                    onClick={() => handleDeleteHospital(selectedEditHospital.id, selectedEditHospital.name)}
+                    className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-mono text-[10px] uppercase tracking-widest transition-colors sm:mr-auto flex items-center justify-center gap-1.5 rounded-sm"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {language === 'fr' ? "SUPPRIMER" : "DELETE"}
+                  </button>
+                )}
                 <button 
                   type="button" 
                   onClick={() => setSelectedEditHospital(null)} 
@@ -2262,6 +2451,65 @@ export default function SystemAdmin() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-app-bg border border-rose-500 w-full max-w-sm my-auto p-6 sm:p-8 relative shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-lg font-mono uppercase tracking-widest text-rose-600 mb-4 font-bold flex items-center gap-2">
+              <Trash2 className="w-5 h-5 animate-pulse" />
+              {language === 'fr' ? "CONFIRMER LA SUPPRESSION" : "CONFIRM_DELETION"}
+            </h2>
+            <div className="space-y-4">
+              <p className="text-xs font-mono opacity-80 leading-relaxed text-slate-700">
+                {deleteConfirm.type === 'user' ? (
+                  language === 'fr' 
+                    ? `Êtes-vous sûr de vouloir supprimer définitivement le compte de "${deleteConfirm.name}" ? Cette action est irréversible.`
+                    : `Are you sure you want to permanently delete the user account of "${deleteConfirm.name}"? This action is completely irreversible.`
+                ) : (
+                  language === 'fr'
+                    ? `ATTENTION : Êtes-vous sûr de vouloir supprimer définitivement l'établissement "${deleteConfirm.name}" ? Tous les documents associés dans les collections de l'infrastructure seront supprimés.`
+                    : `WARNING: Are you sure you want to permanently delete the tenant "${deleteConfirm.name}"? All matching configurations inside infrastructure collections will be deleted.`
+                )}
+              </p>
+              <div className="bg-rose-50 border border-rose-100 p-3 text-rose-800 text-[10px] font-mono rounded">
+                ⚡ {language === 'fr' 
+                  ? "Cette action ne peut pas être annulée." 
+                  : "WARNING: This action cannot be undone."}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-app-line">
+              <button 
+                type="button" 
+                onClick={() => setDeleteConfirm(null)} 
+                disabled={isDeletingLoading}
+                className="px-4 py-2 border border-app-line font-mono text-[9px] uppercase tracking-widest hover:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                {language === 'fr' ? "ANNULER" : "ABORT"}
+              </button>
+              <button 
+                type="button" 
+                onClick={handleConfirmDelete}
+                disabled={isDeletingLoading}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-mono text-[9px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1.5 rounded-sm disabled:opacity-50"
+              >
+                {isDeletingLoading ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    {language === 'fr' ? "SUPPRESSION..." : "DELETING..."}
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {language === 'fr' ? "CONFIRMER" : "EXEC_DELETE"}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

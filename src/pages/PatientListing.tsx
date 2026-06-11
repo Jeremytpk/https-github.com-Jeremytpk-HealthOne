@@ -68,6 +68,25 @@ export default function PatientListing() {
     department: "General Medicine"
   });
 
+  const [selectedDeptOption, setSelectedDeptOption] = useState("General Medicine");
+  const [customDeptTyped, setCustomDeptTyped] = useState("");
+
+  useEffect(() => {
+    if (!showRegModal) {
+      setFormData({
+        firstName: "",
+        lastName: "",
+        dateOfBirth: "",
+        gender: "Other",
+        phone: "",
+        email: "",
+        department: "General Medicine"
+      });
+      setSelectedDeptOption("General Medicine");
+      setCustomDeptTyped("");
+    }
+  }, [showRegModal]);
+
   const handleDeletePatient = async () => {
     if (!patientToDelete) return;
     setIsDeleting(true);
@@ -152,7 +171,7 @@ export default function PatientListing() {
     setIsSubmitting(true);
     
     if (!canAddPatient) {
-      setFormError("UNAUTHORIZED: Only Registrar and Admin roles can register new patients.");
+      setFormError("UNAUTHORIZED: Only Reception/ Caisse and Admin roles can register new patients.");
       setIsSubmitting(false);
       return;
     }
@@ -245,26 +264,27 @@ export default function PatientListing() {
 
   const formatBirthDate = (dob: string) => {
     if (!dob) return "—";
-    const parts = dob.split("-");
+    // Normalize slashes to dashes
+    const normalizedDob = dob.replace(/\//g, "-");
+    const parts = normalizedDob.split("-");
     if (parts.length === 3 && parts[0].length === 4) {
       if (language === 'fr') {
         const [year, month, day] = parts;
         return `${day}-${month}-${year}`;
       }
-      return dob;
+      return normalizedDob;
     }
-    const frParts = dob.split("-");
-    if (frParts.length === 3 && frParts[2].length === 4) {
+    if (parts.length === 3 && parts[2].length === 4) {
       if (language === 'fr') {
-        return dob;
+        return normalizedDob;
       }
-      const [day, month, year] = frParts;
+      const [day, month, year] = parts;
       return `${year}-${month}-${day}`;
     }
     
     try {
-      const d = new Date(dob);
-      if (isNaN(d.getTime())) return dob;
+      const d = new Date(normalizedDob);
+      if (isNaN(d.getTime())) return normalizedDob;
       if (language === 'fr') {
         const day = String(d.getDate()).padStart(2, '0');
         const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -272,8 +292,37 @@ export default function PatientListing() {
         return `${day}-${month}-${year}`;
       }
     } catch (e) {}
-    return dob;
+    return normalizedDob;
   };
+
+  const standardDepts = [
+    "General Medicine",
+    "Pediatrics",
+    "Emergency",
+    "Cardiology"
+  ];
+
+  const counts: Record<string, { original: string; count: number }> = {};
+  mergedPatients.forEach((p) => {
+    if (!p.department) return;
+    const dept = p.department.trim();
+    if (!dept) return;
+    
+    const isStandard = standardDepts.some(
+      sd => sd.toLowerCase() === dept.toLowerCase()
+    );
+    if (!isStandard) {
+      const key = dept.toLowerCase();
+      if (!counts[key]) {
+        counts[key] = { original: dept, count: 0 };
+      }
+      counts[key].count += 1;
+    }
+  });
+
+  const dynamicDepts = Object.values(counts)
+    .filter(item => item.count >= 3)
+    .map(item => item.original);
 
   return (
     <div className="space-y-4">
@@ -491,7 +540,7 @@ export default function PatientListing() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("dob")}</label>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("dob")} {language === 'fr' ? "(JJ-MM-AAAA)" : "(MM-DD-YYYY)"}</label>
                     <input 
                       type="date" 
                       required 
@@ -538,16 +587,47 @@ export default function PatientListing() {
                   <div>
                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("department")}</label>
                      <select 
-                      value={formData.department}
-                      onChange={(e) => setFormData({...formData, department: e.target.value})}
+                      value={selectedDeptOption}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedDeptOption(val);
+                        if (val === "Other") {
+                          setFormData({...formData, department: customDeptTyped});
+                        } else {
+                          setFormData({...formData, department: val});
+                        }
+                      }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none transition-all"
                      >
                        <option value="General Medicine">{t("generalMedicineDept")}</option>
                        <option value="Pediatrics">{t("pediatricsDept")}</option>
                        <option value="Emergency">{t("emergencyDept")}</option>
                        <option value="Cardiology">{t("cardiologyDept")}</option>
+                       {dynamicDepts.map((dOpt) => (
+                         <option key={dOpt} value={dOpt}>{dOpt}</option>
+                       ))}
+                       <option value="Other">{language === 'fr' ? "Autre (Saisir...)" : "Other (Type...)"}</option>
                      </select>
                   </div>
+                  {selectedDeptOption === "Other" && (
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] uppercase font-bold text-blue-500 mb-1 tracking-widest">
+                        {language === 'fr' ? "Saisir le nom du Département" : "Type Department Name"}
+                      </label>
+                      <input 
+                        type="text"
+                        required
+                        value={customDeptTyped}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomDeptTyped(val);
+                          setFormData({...formData, department: val});
+                        }}
+                        placeholder={language === 'fr' ? "Ex: Pneumologie" : "E.g., Oncology"}
+                        className="w-full bg-slate-50 border border-blue-205 rounded-lg p-2 text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none transition-all font-medium"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2 flex flex-col gap-3 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-slate-100">
@@ -637,7 +717,18 @@ export default function PatientListing() {
             </p>
           </div>
           <div className="text-right text-xs font-mono">
-            <p className="font-bold">EXPORTED: {new Date().toLocaleDateString()}</p>
+            <p className="font-bold">
+              {language === 'fr' 
+                ? (() => {
+                    const d = new Date();
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const year = d.getFullYear();
+                    return `EXPORTE LE : ${day}-${month}-${year}`;
+                  })()
+                : `EXPORTED: ${new Date().toLocaleDateString('en-US')}`
+              }
+            </p>
             <p className="text-slate-500 mt-1 font-bold">{filteredPatients.length} ROWS</p>
           </div>
         </div>

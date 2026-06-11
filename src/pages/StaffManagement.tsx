@@ -29,7 +29,8 @@ import {
   KeyRound,
   ShieldAlert,
   SlidersHorizontal,
-  Printer
+  Printer,
+  List
 } from "lucide-react";
 import { UserRole, UserStatus, getNormalizedRole, generateUsernameFromName } from "../lib/utils";
 import { initializeApp, deleteApp } from "firebase/app";
@@ -90,7 +91,11 @@ export default function StaffManagement() {
     }
   };
 
+  // View modes: calendar (default grid are each cards with calendars) vs list style
+  const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
+
   // New Staff form
+  const [accountType, setAccountType] = useState<"healthone" | "local">("healthone");
   const [newStaffData, setNewStaffData] = useState({
     name: "",
     username: "",
@@ -192,54 +197,89 @@ export default function StaffManagement() {
     e.preventDefault();
     if (!hospitalId) return;
 
-    if (isOfflineMode) {
+    if (accountType === "healthone" && isOfflineMode) {
       alert(language === 'fr' 
         ? "La création d'un compte utilisateur réel avec accès de connexion nécessite une connexion Internet active pour s'enregistrer auprès du service d'authentification."
         : "Creating a live user login account requires an active internet connection to register with the cloud authentication service.");
       return;
     }
 
-    if (!newStaffData.name || !newStaffData.username || !newStaffData.password) {
-      alert("Please fill in all required fields (Name, Username, Password).");
+    if (!newStaffData.name) {
+      alert(language === 'fr' ? "Veuillez entrer le nom complet." : "Please enter the Full Name.");
+      return;
+    }
+
+    if (accountType === "healthone" && (!newStaffData.username || !newStaffData.password)) {
+      alert(language === 'fr' ? "Veuillez remplir les champs obligatoires (Nom complet, Nom d'utilisateur, Mot de passe)." : "Please fill in all required fields (Name, Username, Password).");
       return;
     }
 
     setCreatingUser(true);
     let secondaryApp;
     try {
-      // Initialize dynamic secondary app to avoid logging out the current active session
-      secondaryApp = initializeApp(firebaseConfig, "StaffCreationApp");
-      const secondaryAuth = getAuth(secondaryApp);
+      let newUid = "";
+      let resolvedEmail = "";
 
-      const resolvedEmail = newStaffData.email.trim() 
-        ? newStaffData.email.trim() 
-        : `${newStaffData.username.toLowerCase().trim()}@healthone.local`;
+      if (accountType === "healthone") {
+        // Initialize dynamic secondary app to avoid logging out the current active session
+        secondaryApp = initializeApp(firebaseConfig, "StaffCreationApp");
+        const secondaryAuth = getAuth(secondaryApp);
 
-      const userCredential = await createUserWithEmailAndPassword(
-        secondaryAuth,
-        resolvedEmail,
-        newStaffData.password.trim()
-      );
+        resolvedEmail = newStaffData.email.trim() 
+          ? newStaffData.email.trim() 
+          : `${newStaffData.username.toLowerCase().trim()}@healthone.local`;
 
-      const newUid = userCredential.user.uid;
+        const userCredential = await createUserWithEmailAndPassword(
+          secondaryAuth,
+          resolvedEmail,
+          newStaffData.password.trim()
+        );
 
-      // Save user record inside the main Firestore "users" collection
-      await setDoc(doc(db, "users", newUid), {
+        newUid = userCredential.user.uid;
+      } else {
+        // Create an empty reference to generate a random document ID in high-performance Firestore users collection
+        const tempDoc = doc(collection(db, "users"));
+        newUid = tempDoc.id;
+      }
+
+      const userData: any = {
         id: newUid,
         uid: newUid,
         name: newStaffData.name.trim(),
         fullName: newStaffData.name.trim(),
-        username: newStaffData.username.toLowerCase().trim(),
-        email: resolvedEmail,
-        password: newStaffData.password.trim(),
         role: newStaffData.role,
         hospitalId,
-        status: "PENDING_APPROVAL",
         schedule: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
         createdAt: serverTimestamp()
-      });
+      };
 
-      alert(`User Account @${newStaffData.username} successfully registered and configured for your hospital!`);
+      if (accountType === "healthone") {
+        userData.username = newStaffData.username.toLowerCase().trim();
+        userData.email = resolvedEmail;
+        userData.password = newStaffData.password.trim();
+        userData.status = "PENDING_APPROVAL";
+        userData.isLocalStaff = false;
+      } else {
+        userData.username = "";
+        userData.email = "";
+        userData.password = "";
+        userData.status = "ACTIVE";
+        userData.isLocalStaff = true;
+      }
+
+      // Save user record inside the main Firestore "users" collection
+      await setDoc(doc(db, "users", newUid), userData);
+
+      if (accountType === "healthone") {
+        alert(language === 'fr' 
+          ? `Le compte utilisateur @${newStaffData.username.toLowerCase().trim()} a été enregistré avec succès !`
+          : `User Account @${newStaffData.username.toLowerCase().trim()} successfully registered and configured for your hospital!`);
+      } else {
+        alert(language === 'fr' 
+          ? `La fiche personnelle de ${newStaffData.name.trim()} a été enregistrée avec succès !`
+          : `Personnel record for ${newStaffData.name.trim()} successfully registered and configured!`);
+      }
+
       setShowAddModal(false);
       setNewStaffData({
         name: "",
@@ -248,6 +288,7 @@ export default function StaffManagement() {
         password: "",
         role: "NURSE"
       });
+      setAccountType("healthone");
       fetchStaff();
     } catch (error: any) {
       console.error("Error registered new user:", error);
@@ -338,120 +379,298 @@ export default function StaffManagement() {
           />
         </div>
         
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <SlidersHorizontal className="w-4 h-4 text-slate-400 shrink-0" />
-          <select 
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 px-3 py-2.5 font-mono text-xs focus:outline-none focus:border-slate-800 transition-colors rounded-lg w-full md:w-48 cursor-pointer"
-          >
-            <option value="ALL">{language === 'fr' ? "TOUS LES RÔLES" : "ALL ROLES"}</option>
-            <option value="DOCTOR">{t("doctor") || "Doctor"}</option>
-            <option value="NURSE">{t("nurse") || "Nurse"}</option>
-            <option value="RECEPTIONIST">{t("receptionist") || "Receptionist"}</option>
-            <option value="PHARMACIST">{t("pharmacist") || "Pharmacist"}</option>
-            <option value="CASHIER">{t("cashier") || "Cashiers"}</option>
-            <option value="HR">{t("hr") || "HR Managers"}</option>
-            <option value="ADMIN">{t("admin") || "Administrators"}</option>
-          </select>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <SlidersHorizontal className="w-4 h-4 text-slate-400 shrink-0" />
+            <select 
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-200 px-3 py-2.5 font-mono text-xs focus:outline-none focus:border-slate-800 transition-colors rounded-lg w-full md:w-48 cursor-pointer"
+            >
+              <option value="ALL">{language === 'fr' ? "TOUS LES RÔLES" : "ALL ROLES"}</option>
+              <option value="DOCTOR">{t("doctor") || "Doctor"}</option>
+              <option value="NURSE">{t("nurse") || "Nurse"}</option>
+              <option value="RECEPTIONIST">{t("receptionist") || "Receptionist"}</option>
+              <option value="PHARMACIST">{t("pharmacist") || "Pharmacist"}</option>
+              <option value="CASHIER">{t("cashier") || "Cashiers"}</option>
+              <option value="HR">{t("hr") || "HR Managers"}</option>
+              <option value="ADMIN">{t("admin") || "Administrators"}</option>
+            </select>
+          </div>
+
+          <div className="flex border border-slate-200 rounded-lg p-1 bg-slate-50 w-full sm:w-auto shrink-0 select-none">
+            <button
+              type="button"
+              onClick={() => setViewMode("calendar")}
+              className={`flex-1 sm:flex-initial py-1.5 px-3 rounded flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase font-bold transition-all cursor-pointer whitespace-nowrap ${
+                viewMode === "calendar"
+                  ? "bg-app-ink text-app-bg shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+              title={language === 'fr' ? "Vue Calendrier" : "Calendar View"}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              {language === 'fr' ? "Calendrier" : "Calendar"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`flex-1 sm:flex-initial py-1.5 px-3 rounded flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase font-bold transition-all cursor-pointer whitespace-nowrap ${
+                viewMode === "list"
+                  ? "bg-app-ink text-app-bg shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+              title={language === 'fr' ? "Vue Liste" : "List View"}
+            >
+              <List className="w-3.5 h-3.5" />
+              {language === 'fr' ? "Liste" : "List"}
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {filteredStaff.length === 0 ? (
-          <div className="col-span-full border border-dashed border-slate-200 rounded-xl p-12 text-center text-slate-400 font-serif italic text-xs">
-            No matching staff members found in this hospital tenant node.
-          </div>
-        ) : (
-          filteredStaff.map((s) => (
-            <div key={s.id} className="bg-white border border-app-line p-6 relative group overflow-hidden rounded-xl shadow-sm hover:shadow-md transition-all">
-               {/* Background Decoration */}
-              <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                <Users className="w-24 h-24" />
-              </div>
-
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-app-ink text-app-bg flex items-center justify-center font-mono text-sm rounded">
-                    {(s.fullName || s.name || "S").charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg leading-tight">{s.fullName || s.name || "Staff Member"}</h3>
-                    <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">{t(s.role)}</p>
-                    {s.username ? (
-                      <p className="text-[9px] font-mono text-slate-400 mt-0.5">@{s.username}</p>
-                    ) : null}
-                  </div>
+      {viewMode === "calendar" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 font-sans">
+          {filteredStaff.length === 0 ? (
+            <div className="col-span-full border border-dashed border-slate-200 rounded-xl p-12 text-center text-slate-400 font-serif italic text-xs">
+              No matching staff members found in this hospital tenant node.
+            </div>
+          ) : (
+            filteredStaff.map((s) => (
+              <div key={s.id} className="bg-white border border-app-line p-6 relative group overflow-hidden rounded-xl shadow-sm hover:shadow-md transition-all">
+                 {/* Background Decoration */}
+                <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                  <Users className="w-24 h-24" />
                 </div>
-                <span className={`text-[9px] px-2 py-0.5 border font-mono uppercase rounded-full ${getStatusColor(s.status)}`}>
-                  {t(s.status)}
-                </span>
-              </div>
 
-              <div className="space-y-3 mb-6">
-                <div className="flex items-center justify-between text-xs font-mono opacity-80 uppercase tracking-wider font-bold">
-                  <span className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" /> {t("schedules") || "Schedule Availability"}
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-app-ink text-app-bg flex items-center justify-center font-mono text-sm rounded select-none">
+                      {(s.fullName || s.name || "S").charAt(0)}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="font-bold text-base sm:text-lg leading-tight text-slate-900">{s.fullName || s.name || "Staff Member"}</h3>
+                        {s.isLocalStaff ? (
+                          <span className="text-[8px] bg-slate-100 border border-slate-300 text-slate-600 font-mono font-bold px-1 py-0.5 rounded uppercase tracking-wider">
+                            {language === 'fr' ? "Pers. Simple" : "Local Rec"}
+                          </span>
+                        ) : (
+                          <span className="text-[8px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-bold px-1 py-0.5 rounded uppercase tracking-wider">
+                            HealthOne
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">{t(s.role)}</p>
+                      {s.username ? (
+                        <p className="text-[9px] font-mono text-slate-400 mt-0.5">@{s.username}</p>
+                      ) : (
+                        <p className="text-[9px] font-mono text-slate-400 italic mt-0.5">
+                          {language === 'fr' ? "Pas d'accès de connexion" : "No login access"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <span className={`text-[9px] px-2 py-0.5 border font-mono uppercase rounded-full ${getStatusColor(s.status)}`}>
+                    {t(s.status)}
                   </span>
-                  
-                  <button
-                    onClick={() => setViewingStaffSchedule(s)}
-                    title={language === 'fr' ? "Planifier par date" : "Schedule via Calendar"}
-                    className="p-1 px-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-100 rounded transition-colors cursor-pointer flex items-center gap-1 text-[9px] uppercase font-mono tracking-wider font-bold"
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  <div className="flex items-center justify-between text-xs font-mono opacity-80 uppercase tracking-wider font-bold">
+                    <span className="flex items-center gap-2 text-slate-700">
+                      <Clock className="w-3.5 h-3.5 text-slate-400 font-mono" /> {t("schedules") || "Schedule Availability"}
+                    </span>
+                    
+                    <button
+                      onClick={() => setViewingStaffSchedule(s)}
+                      title={language === 'fr' ? "Planifier par date" : "Schedule via Calendar"}
+                      className="p-1 px-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-100 rounded transition-colors cursor-pointer flex items-center gap-1 text-[9px] uppercase font-mono tracking-wider font-bold"
+                    >
+                      <Calendar className="w-3 h-3" />
+                      {language === 'fr' ? "Calendrier" : "Calendar"}
+                    </button>
+                  </div>
+
+                  <MiniAuditedCalendar 
+                    schedule={s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']}
+                    onChangeSchedule={async (newSchedule) => {
+                      try {
+                        const docRef = doc(db, "users", s.id);
+                        await updateDoc(docRef, { schedule: newSchedule });
+                        setStaff(prev => prev.map(u => u.id === s.id ? { ...u, schedule: newSchedule } : u));
+                      } catch (err) {
+                        console.error("Failed to update staff schedule:", err);
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 border-t border-app-line pt-4">
+                  <button 
+                    onClick={() => updateStatus(s.id, 'ACTIVE')}
+                    title={t("setActive")}
+                    className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-green-50 transition-colors cursor-pointer"
                   >
-                    <Calendar className="w-3 h-3" />
-                    {language === 'fr' ? "Calendrier" : "Calendar"}
+                    <Power className="w-3 h-3 text-green-600" />
+                  </button>
+                  <button 
+                    onClick={() => updateStatus(s.id, 'ON_VACATION')}
+                    title={t("onVacation")}
+                    className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-blue-50 transition-colors cursor-pointer"
+                  >
+                    <Plane className="w-3 h-3 text-blue-600" />
+                  </button>
+                  <button 
+                    onClick={() => updateStatus(s.id, 'OFF')}
+                    title={t("offDuty")}
+                    className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-orange-50 transition-colors cursor-pointer"
+                  >
+                    <Calendar className="w-3 h-3 text-orange-600" />
+                  </button>
+                  <button 
+                    onClick={() => updateStatus(s.id, 'TERMINATED')}
+                    title={t("terminateAction")}
+                    className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-red-50 transition-colors cursor-pointer"
+                  >
+                    <UserMinus className="w-3 h-3 text-red-600" />
                   </button>
                 </div>
-
-                <MiniAuditedCalendar 
-                  schedule={s.schedule || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']}
-                  onChangeSchedule={async (newSchedule) => {
-                    try {
-                      const docRef = doc(db, "users", s.id);
-                      await updateDoc(docRef, { schedule: newSchedule });
-                      setStaff(prev => prev.map(u => u.id === s.id ? { ...u, schedule: newSchedule } : u));
-                    } catch (err) {
-                      console.error("Failed to update staff schedule:", err);
-                    }
-                  }}
-                />
               </div>
-
-              <div className="flex items-center gap-1 border-t border-app-line pt-4">
-                <button 
-                  onClick={() => updateStatus(s.id, 'ACTIVE')}
-                  title={t("setActive")}
-                  className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-green-50 transition-colors cursor-pointer"
-                >
-                  <Power className="w-3 h-3 text-green-600" />
-                </button>
-                <button 
-                  onClick={() => updateStatus(s.id, 'ON_VACATION')}
-                  title={t("onVacation")}
-                  className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-blue-50 transition-colors cursor-pointer"
-                >
-                  <Plane className="w-3 h-3 text-blue-600" />
-                </button>
-                <button 
-                  onClick={() => updateStatus(s.id, 'OFF')}
-                  title={t("offDuty")}
-                  className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-orange-50 transition-colors cursor-pointer"
-                >
-                  <Calendar className="w-3 h-3 text-orange-600" />
-                </button>
-                <button 
-                  onClick={() => updateStatus(s.id, 'TERMINATED')}
-                  title={t("terminateAction")}
-                  className="flex-1 h-8 border border-app-line rounded flex items-center justify-center hover:bg-red-50 transition-colors cursor-pointer"
-                >
-                  <UserMinus className="w-3 h-3 text-red-600" />
-                </button>
-              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        /* Clean and compact tabular list view */
+        <div className="bg-white border border-app-line rounded-xl overflow-hidden shadow-sm font-sans">
+          {filteredStaff.length === 0 ? (
+            <div className="border border-dashed border-slate-200 rounded-xl m-4 p-12 text-center text-slate-400 font-serif italic text-xs">
+              No matching staff members found in this hospital tenant node.
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-app-line text-slate-500 font-bold uppercase tracking-wider text-[9px] font-mono">
+                    <th className="p-4 pl-6">{language === 'fr' ? "MEMBRE DU PERSONNEL" : "STAFF MEMBER"}</th>
+                    <th className="p-4">{language === 'fr' ? "RÔLE DÉSIGNÉ" : "ASSIGNED ROLE"}</th>
+                    <th className="p-4">{language === 'fr' ? "PLANIFICATION DU SERVICE" : "WEEKLY DUTY PROFILE"}</th>
+                    <th className="p-4">{language === 'fr' ? "STATUT" : "STATUS"}</th>
+                    <th className="p-4 pr-6 text-right">{language === 'fr' ? "ACTIONS" : "ACTIONS"}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-app-line">
+                  {filteredStaff.map((s) => {
+                    const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                    return (
+                      <tr key={s.id} className="hover:bg-slate-50/40 transition-colors">
+                        <td className="p-4 pl-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded bg-app-ink text-app-bg flex items-center justify-center font-bold text-xs select-none shrink-0 font-sans">
+                              {(s.fullName || s.name || "S").charAt(0)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-slate-800 text-sm truncate font-sans">{s.fullName || s.name || "Staff Member"}</span>
+                                {s.isLocalStaff ? (
+                                  <span className="text-[8px] bg-slate-100 border border-slate-300 text-slate-600 font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    {language === 'fr' ? "Pers. Simple" : "Local Rec"}
+                                  </span>
+                                ) : (
+                                  <span className="text-[8px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    HealthOne
+                                  </span>
+                                )}
+                              </div>
+                              {s.username ? (
+                                <span className="text-[10px] text-slate-400 font-mono block">@{s.username}</span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic block">
+                                  {language === 'fr' ? "Pas d'accès de connexion" : "No login access"}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4 font-mono font-bold uppercase tracking-wider text-[10px] text-slate-600">
+                          {t(s.role)}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-col gap-1.5 justify-center">
+                            <div className="flex items-center gap-1 select-none">
+                              {weekdays.map((day) => {
+                                const short = language === 'fr' ? weekdayShortFr[day] : weekdayShortEn[day];
+                                const hasDay = s.schedule && s.schedule.includes(day);
+                                return (
+                                  <span 
+                                    key={day} 
+                                    className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold font-mono uppercase border transition-all ${
+                                      hasDay 
+                                        ? "bg-emerald-500 border-emerald-600 text-white shadow-xs font-extrabold" 
+                                        : "bg-slate-50 border-slate-205 text-slate-300"
+                                    }`}
+                                    title={language === 'fr' ? weekdayDisplayFr[day] || day : day}
+                                  >
+                                    {short}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            <button
+                              onClick={() => setViewingStaffSchedule(s)}
+                              className="text-[10px] font-mono text-blue-600 hover:text-blue-800 font-bold uppercase flex items-center gap-1 w-fit transition-colors hover:underline cursor-pointer"
+                            >
+                              <Calendar className="w-3 h-3" />
+                              {language === 'fr' ? "Planifier par Calendrier" : "Schedule via Calendar"}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <span className={`text-[9px] px-2 py-0.5 border font-mono uppercase rounded-full inline-block ${getStatusColor(s.status)}`}>
+                            {t(s.status)}
+                          </span>
+                        </td>
+                        <td className="p-4 pr-6 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button 
+                              onClick={() => updateStatus(s.id, 'ACTIVE')}
+                              title={t("setActive")}
+                              className="w-7 h-7 border border-app-line rounded flex items-center justify-center hover:bg-green-50 transition-colors cursor-pointer"
+                            >
+                              <Power className="w-3.5 h-3.5 text-green-600" />
+                            </button>
+                            <button 
+                              onClick={() => updateStatus(s.id, 'ON_VACATION')}
+                              title={t("onVacation")}
+                              className="w-7 h-7 border border-app-line rounded flex items-center justify-center hover:bg-blue-50 transition-colors cursor-pointer"
+                            >
+                              <Plane className="w-3.5 h-3.5 text-blue-600" />
+                            </button>
+                            <button 
+                              onClick={() => updateStatus(s.id, 'OFF')}
+                              title={t("offDuty")}
+                              className="w-7 h-7 border border-app-line rounded flex items-center justify-center hover:bg-orange-50 transition-colors cursor-pointer"
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-orange-600" />
+                            </button>
+                            <button 
+                              onClick={() => updateStatus(s.id, 'TERMINATED')}
+                              title={t("terminateAction")}
+                              className="w-7 h-7 border border-app-line rounded flex items-center justify-center hover:bg-red-50 transition-colors cursor-pointer"
+                            >
+                              <UserMinus className="w-3.5 h-3.5 text-red-600" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add Staff Modal */}
       {showAddModal && (
@@ -460,6 +679,67 @@ export default function StaffManagement() {
             <h2 className="text-xl sm:text-2xl font-serif italic font-bold mb-6 border-b border-app-line pb-2">{t("staff")} [REG_FORM]</h2>
             
             <form onSubmit={handleAddStaff} className="space-y-4">
+              {/* Account Type Selector with Explanations */}
+              <div className="bg-slate-50 border border-app-line p-3.5 rounded-lg space-y-3">
+                <span className="block text-[10px] uppercase font-mono opacity-50 tracking-wider">
+                  {language === 'fr' ? "Type d'enregistrement" : "Registration Type"}
+                </span>
+                
+                <div className="flex gap-2 p-1 bg-white border border-app-line rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setAccountType("healthone")}
+                    className={`flex-1 py-1.5 text-[11px] font-mono font-bold uppercase rounded transition-all cursor-pointer ${
+                      accountType === "healthone"
+                        ? "bg-app-ink text-app-bg shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {language === 'fr' ? "Compte HealthOne" : "HealthOne Account"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAccountType("local")}
+                    className={`flex-1 py-1.5 text-[11px] font-mono font-bold uppercase rounded transition-all cursor-pointer ${
+                      accountType === "local"
+                        ? "bg-app-ink text-app-bg shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {language === 'fr' ? "Personnel Simple" : "Staff Record"}
+                  </button>
+                </div>
+
+                {/* Dynamic explanations describing differences clearly */}
+                <div className="text-xs text-slate-600 space-y-1.5 leading-relaxed bg-white border border-slate-100 p-2.5 rounded-md">
+                  {accountType === "healthone" ? (
+                    <>
+                      <p className="font-bold text-slate-800 uppercase text-[9px] tracking-wide font-mono text-indigo-700 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full inline-block animate-pulse" />
+                        {language === 'fr' ? "Système avec identifiants" : "Full access credentialed user"}
+                      </p>
+                      <p className="text-[11px]">
+                        {language === 'fr' 
+                          ? "Crée des accès d'authentification réels. L'employé disposera d'un mot de passe et pourra se connecter au système pour gérer les dossiers, patients et rapports d'évolution."
+                          : "Creates standard active login credentials. Allows this member to log in to the facility dashboard, interact with patient files, and submit notes."}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-bold text-slate-800 uppercase text-[9px] tracking-wide font-mono text-emerald-700 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-emerald-600 rounded-full inline-block" />
+                        {language === 'fr' ? "Enregistrement local uniquement" : "Local administrative record only"}
+                      </p>
+                      <p className="text-[11px]">
+                        {language === 'fr' 
+                          ? "Crée un profil de présence sans mot de passe ni identifiants. Parfait pour ajouter des infirmiers ou médecins au planning interne, au tableau de garde et au registre RH sans leur donner d'accès de connexion."
+                          : "Adds a physical person entry for duty scheduling, work calendars, and HR purposes. They will not be able to log in to the software."}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">{t("fullName")}</label>
                 <input 
@@ -475,55 +755,59 @@ export default function StaffManagement() {
                 />
               </div>
 
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-[10px] uppercase font-mono opacity-50">Username / Nom d'utilisateur</label>
-                  <button 
-                    type="button" 
-                    onClick={suggestUsername}
-                    className="text-[9px] font-mono text-blue-600 hover:underline cursor-pointer"
-                  >
-                    {language === 'fr' ? "Suggérer" : "Suggest"}
-                  </button>
-                </div>
-                <input 
-                  type="text" 
-                  required 
-                  placeholder="e.g. jdoe"
-                  value={newStaffData.username}
-                  onChange={(e) => setNewStaffData({...newStaffData, username: e.target.value})}
-                  className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg"
-                />
-              </div>
+              {accountType === "healthone" && (
+                <>
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[10px] uppercase font-mono opacity-50">Username / Nom d'utilisateur</label>
+                      <button 
+                        type="button" 
+                        onClick={suggestUsername}
+                        className="text-[9px] font-mono text-blue-600 hover:underline cursor-pointer"
+                      >
+                        {language === 'fr' ? "Suggérer" : "Suggest"}
+                      </button>
+                    </div>
+                    <input 
+                      type="text" 
+                      required={accountType === "healthone"}
+                      placeholder="e.g. jdoe"
+                      value={newStaffData.username}
+                      onChange={(e) => setNewStaffData({...newStaffData, username: e.target.value})}
+                      className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">
-                  {t("email")} {language === 'fr' ? "(Optionnel)" : "(Optional)"}
-                </label>
-                <input 
-                  type="email" 
-                  value={newStaffData.email}
-                  onChange={(e) => setNewStaffData({...newStaffData, email: e.target.value})}
-                  className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg"
-                />
-              </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">
+                      {t("email")} {language === 'fr' ? "(Optionnel)" : "(Optional)"}
+                    </label>
+                    <input 
+                      type="type" 
+                      value={newStaffData.email}
+                      onChange={(e) => setNewStaffData({...newStaffData, email: e.target.value})}
+                      className="w-full bg-white border border-app-line p-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg"
+                    />
+                  </div>
 
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-[10px] uppercase font-mono opacity-50">Password / Mot de passe</label>
-                </div>
-                <div className="relative">
-                  <KeyRound className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text" 
-                    required 
-                    placeholder="Enter password..."
-                    value={newStaffData.password}
-                    onChange={(e) => setNewStaffData({...newStaffData, password: e.target.value})}
-                    className="w-full bg-white border border-app-line pl-10 pr-4 py-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg bg-slate-50/50"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[10px] uppercase font-mono opacity-50">Password / Mot de passe</label>
+                    </div>
+                    <div className="relative">
+                      <KeyRound className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                      <input 
+                        type="text" 
+                        required={accountType === "healthone"}
+                        placeholder="Enter password..."
+                        value={newStaffData.password}
+                        onChange={(e) => setNewStaffData({...newStaffData, password: e.target.value})}
+                        className="w-full bg-white border border-app-line pl-10 pr-4 py-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink rounded-lg bg-slate-50/50"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block text-[10px] uppercase font-mono opacity-50 mb-1">{t("designatedRole")}</label>

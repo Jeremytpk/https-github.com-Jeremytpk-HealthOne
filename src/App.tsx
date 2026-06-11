@@ -18,6 +18,8 @@ import Pharmacy from "./pages/Pharmacy";
 import Finance from "./pages/Finance";
 import SystemAdmin from "./pages/SystemAdmin";
 import Profile from "./pages/Profile";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsAndConditions from "./pages/TermsAndConditions";
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({ children, allowedRoles }) => {
   const { user, profile, loading } = useAuth();
@@ -89,6 +91,8 @@ export default function App() {
                 
                 <Route path="profile" element={<Profile />} />
                 <Route path="system-admin" element={<ProtectedRoute allowedRoles={['SYSTEM_ADMIN', 'SUP_ADMIN']}><SystemAdmin /></ProtectedRoute>} />
+                <Route path="privacy" element={<PrivacyPolicy />} />
+                <Route path="terms" element={<TermsAndConditions />} />
               </Route>
 
               <Route path="*" element={<Navigate to="/" />} />

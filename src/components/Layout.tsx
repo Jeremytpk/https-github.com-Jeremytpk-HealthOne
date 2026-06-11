@@ -14,7 +14,9 @@ import {
   Menu,
   X,
   Pin,
-  PinOff
+  PinOff,
+  ShieldCheck,
+  FileText
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -54,6 +56,8 @@ const Layout: React.FC = () => {
     { path: "/pharmacy", icon: Pill, label: t("pharmacy"), roles: ['ADMIN', 'PHARMACIST', 'PHARMACIE', 'DOCTOR'] },
     { path: "/finance", icon: Wallet, label: t("finance"), roles: ['ADMIN', 'REGISTER'] },
     { path: "/system-admin", icon: ShieldAlert, label: t("systemAdmin"), roles: ['SYSTEM_ADMIN', 'SUP_ADMIN'] },
+    { path: "/privacy", icon: ShieldCheck, label: t("privacy") },
+    { path: "/terms", icon: FileText, label: t("termsAndConditions") },
   ];
 
   const filteredNav = navItems.filter(item => {
@@ -88,9 +92,18 @@ const Layout: React.FC = () => {
 
       {/* User Profile Summary Card */}
       <div className="mx-4 mt-4 p-3 bg-slate-800/60 border border-slate-700/60 rounded-lg flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-400 border border-blue-550/20 flex items-center justify-center font-bold text-xs uppercase shrink-0">
-          {(profile?.fullName || profile?.name || 'U').charAt(0)}
-        </div>
+        {profile?.photoURL ? (
+          <img 
+            src={profile.photoURL} 
+            alt={profile?.fullName || profile?.name || 'User'} 
+            className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-600"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center font-bold text-xs uppercase shrink-0">
+            {(profile?.fullName || profile?.name || 'U').charAt(0)}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold text-slate-100 leading-tight truncate">
             {profile?.fullName || profile?.name || 'User'}
@@ -287,9 +300,18 @@ const Layout: React.FC = () => {
               <p className="text-xs font-bold leading-none group-hover:text-blue-600 transition-colors">{profile?.fullName || profile?.name || 'User'}</p>
               <p className="text-[9px] text-slate-500 uppercase tracking-tighter mt-1">{profile?.role ? t(profile.role.toUpperCase()) : t("Staff")}</p>
             </div>
-            <div className="w-8 lg:w-9 h-8 lg:h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs border-2 border-white group-hover:border-blue-500 shadow-sm uppercase shrink-0 transition-all font-sans">
-              {(profile?.fullName || profile?.name || 'U').charAt(0)}
-            </div>
+            {profile?.photoURL ? (
+              <img 
+                src={profile.photoURL} 
+                alt={profile?.fullName || profile?.name || 'User'} 
+                className="w-8 lg:w-9 h-8 lg:h-9 rounded-full object-cover border-2 border-white group-hover:border-blue-500 shadow-sm shrink-0 transition-all"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-8 lg:w-9 h-8 lg:h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs border-2 border-white group-hover:border-blue-500 shadow-sm uppercase shrink-0 transition-all font-sans">
+                {(profile?.fullName || profile?.name || 'U').charAt(0)}
+              </div>
+            )}
           </Link>
         </header>
 
@@ -311,12 +333,12 @@ const Layout: React.FC = () => {
             {isOfflineMode ? (
               <span className="flex items-center gap-1 font-mono whitespace-nowrap text-amber-600 font-bold animate-pulse">
                 <WifiOff className="w-3.5 h-3.5 text-rose-500" />
-                OFFLINE | {profile?.role?.toUpperCase()}
+                OFFLINE | {profile?.role ? t(profile.role.toUpperCase()) : ""}
               </span>
             ) : (
               <span className="flex items-center gap-1 font-mono whitespace-nowrap text-emerald-600 font-bold">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                {t("online")} | {profile?.role?.toUpperCase()}
+                {t("online")} | {profile?.role ? t(profile.role.toUpperCase()) : ""}
               </span>
             )}
             <span className="truncate">

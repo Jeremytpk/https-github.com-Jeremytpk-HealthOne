@@ -66,6 +66,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => signOut(auth);
 
+  // Helper to extract hospitalId from various possible field names
+  const getHospitalId = (userProfile: any) => {
+    if (!userProfile) return null;
+    if (userProfile.hospitalId) return userProfile.hospitalId;
+    if (userProfile.hospital && typeof userProfile.hospital === 'string') return userProfile.hospital;
+    if (userProfile.hospital && typeof userProfile.hospital === 'object' && userProfile.hospital.id) return userProfile.hospital.id;
+    return null;
+  };
+
   const updateProfile = async (updates: any) => {
     if (!user) throw new Error("No user logged in");
     const docRef = doc(db, "users", user.uid);
@@ -81,7 +90,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const docRef = doc(db, "users", firebaseUser.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            const profileData = { id: firebaseUser.uid, ...docSnap.data() };
+            const rawData = docSnap.data();
+            const profileData = { id: firebaseUser.uid, ...rawData } as any;
+            
+            // Resolve the hospital name from healthone_hospitals collection
+            const hId = getHospitalId(profileData);
+            if (hId) {
+              try {
+                // Initialize with local cache first for instant loading
+                const cachedName = localStorage.getItem(`healthone_hospital_name_${hId}`);
+                if (cachedName) {
+                  profileData.hospitalName = cachedName;
+                  profileData.hospital = { id: hId, name: cachedName };
+                }
+
+                // Fetch current hospital metadata from the healthone_hospitals Firestore collection
+                const hDocSnap = await getDoc(doc(db, "healthone_hospitals", hId));
+                if (hDocSnap.exists()) {
+                  const hData = hDocSnap.data();
+                  if (hData && hData.name) {
+                    profileData.hospitalName = hData.name;
+                    profileData.hospital = { id: hId, name: hData.name, ...hData };
+                    localStorage.setItem(`healthone_hospital_name_${hId}`, hData.name);
+                  }
+                }
+              } catch (hErr) {
+                console.error("Error fetching hospital metadata in AuthContext:", hErr);
+              }
+            }
+
             setProfile(profileData);
           } else {
             setProfile(null);
@@ -103,15 +140,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return unsubscribe;
   }, []);
-
-  // Helper to extract hospitalId from various possible field names
-  const getHospitalId = (profile: any) => {
-    if (!profile) return null;
-    if (profile.hospitalId) return profile.hospitalId;
-    if (profile.hospital && typeof profile.hospital === 'string') return profile.hospital;
-    if (profile.hospital && typeof profile.hospital === 'object' && profile.hospital.id) return profile.hospital.id;
-    return null;
-  };
 
   return (
     <AuthContext.Provider value={{ 

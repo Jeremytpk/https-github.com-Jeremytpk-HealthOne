@@ -11,7 +11,8 @@ import {
   serverTimestamp,
   orderBy,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -56,7 +57,7 @@ export default function PatientDetails() {
   // Helper to format case date to group/compare
   const getCaseDateLabel = (c: any) => {
     const isFr = language === "fr";
-    const pattern = isFr ? 'dd/MM/yyyy' : 'MMMM dd, yyyy';
+    const pattern = isFr ? 'dd-MM-yyyy' : 'MMMM dd, yyyy';
     if (c.createdAt?.seconds) {
       return format(c.createdAt.toDate(), pattern);
     } else if (c.createdAt instanceof Date) {
@@ -99,26 +100,27 @@ export default function PatientDetails() {
 
   const formatBirthDate = (dob: string) => {
     if (!dob) return "—";
-    const parts = dob.split("-");
+    // Normalize slashes to dashes
+    const normalizedDob = dob.replace(/\//g, "-");
+    const parts = normalizedDob.split("-");
     if (parts.length === 3 && parts[0].length === 4) {
       if (language === 'fr') {
         const [year, month, day] = parts;
         return `${day}-${month}-${year}`;
       }
-      return dob;
+      return normalizedDob;
     }
-    const frParts = dob.split("-");
-    if (frParts.length === 3 && frParts[2].length === 4) {
+    if (parts.length === 3 && parts[2].length === 4) {
       if (language === 'fr') {
-        return dob;
+        return normalizedDob;
       }
-      const [day, month, year] = frParts;
+      const [day, month, year] = parts;
       return `${year}-${month}-${day}`;
     }
     
     try {
-      const d = new Date(dob);
-      if (isNaN(d.getTime())) return dob;
+      const d = new Date(normalizedDob);
+      if (isNaN(d.getTime())) return normalizedDob;
       if (language === 'fr') {
         const day = String(d.getDate()).padStart(2, '0');
         const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -126,7 +128,7 @@ export default function PatientDetails() {
         return `${day}-${month}-${year}`;
       }
     } catch (e) {}
-    return dob;
+    return normalizedDob;
   };
   
   // New Case/Note state
@@ -197,18 +199,7 @@ export default function PatientDetails() {
   const [patientPayments, setPatientPayments] = useState<any[]>([]);
 
   const fetchPatientPayments = async () => {
-    if (!id) return;
-    try {
-      const q = query(
-        collection(db, "payments"),
-        where("patientId", "==", id)
-      );
-      const querySnapshot = await getDocs(q);
-      const fetchedPayments = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPatientPayments(fetchedPayments);
-    } catch (e) {
-      console.error("Failed to fetch payments for patient in details:", e);
-    }
+    // Handled in real-time by onSnapshot subscription
   };
 
   // Edit/Delete state hooks
@@ -238,6 +229,10 @@ export default function PatientDetails() {
     department: "General Medicine",
   });
 
+  const [selectedDeptOption, setSelectedDeptOption] = useState("General Medicine");
+  const [customDeptTyped, setCustomDeptTyped] = useState("");
+  const [allPatients, setAllPatients] = useState<any[]>([]);
+
   const userRole = getNormalizedRole(profile?.role);
   const canDeletePatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
   const canEditPatient = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
@@ -245,6 +240,60 @@ export default function PatientDetails() {
 
   const handleOpenEditPatient = () => {
     if (!patient) return;
+    
+    const standardDepts = [
+      "General Medicine",
+      "Pediatrics",
+      "Emergency",
+      "Cardiology"
+    ];
+    const patientDept = patient.department || "General Medicine";
+    
+    const counts: Record<string, { original: string; count: number }> = {};
+    const offlinePatients = getQueuedItemsForCollection("patients")
+      .filter((item: any) => item.data.hospitalId === (hospitalId || patient.hospitalId || ""))
+      .map((item: any) => ({ id: item.id, ...item.data }));
+    const mergedPatients = [...offlinePatients, ...allPatients];
+    
+    mergedPatients.forEach((p) => {
+      if (!p.department) return;
+      const dept = p.department.trim();
+      if (!dept) return;
+      
+      const isStandardState = standardDepts.some(
+        sd => sd.toLowerCase() === dept.toLowerCase()
+      );
+      if (!isStandardState) {
+        const key = dept.toLowerCase();
+        if (!counts[key]) {
+          counts[key] = { original: dept, count: 0 };
+        }
+        counts[key].count += 1;
+      }
+    });
+
+    const dynamicDepts = Object.values(counts)
+      .filter(item => item.count >= 3)
+      .map(item => item.original);
+
+    const isStandard = standardDepts.some(d => d.toLowerCase() === patientDept.toLowerCase());
+    const isDynamic = dynamicDepts.some(d => d.toLowerCase() === patientDept.toLowerCase());
+    
+    let resolvedDeptOption = "General Medicine";
+    let resolvedCustomTyped = "";
+    
+    if (isStandard) {
+      resolvedDeptOption = standardDepts.find(d => d.toLowerCase() === patientDept.toLowerCase()) || patientDept;
+    } else if (isDynamic) {
+      resolvedDeptOption = dynamicDepts.find(d => d.toLowerCase() === patientDept.toLowerCase()) || patientDept;
+    } else {
+      resolvedDeptOption = "Other";
+      resolvedCustomTyped = patientDept;
+    }
+
+    setSelectedDeptOption(resolvedDeptOption);
+    setCustomDeptTyped(resolvedCustomTyped);
+
     setEditPatientForm({
       firstName: patient.firstName || "",
       lastName: patient.lastName || "",
@@ -252,7 +301,7 @@ export default function PatientDetails() {
       gender: patient.gender || "Other",
       phone: patient.phone || "",
       email: patient.email || "",
-      department: patient.department || "General Medicine",
+      department: patientDept,
     });
     setShowEditPatientModal(true);
   };
@@ -294,21 +343,9 @@ export default function PatientDetails() {
   };
 
   useEffect(() => {
-    if (id) {
-      fetchPatient();
-      fetchCases();
-      fetchPatientPayments();
-    }
-  }, [id]);
-
-  useEffect(() => {
-    if (selectedCase) {
-      fetchNotes(selectedCase.id);
-    }
-  }, [selectedCase]);
-
-  const fetchPatient = async () => {
-    if (id?.startsWith("offline_")) {
+    if (!id) return;
+    
+    if (id.startsWith("offline_")) {
       const queuedPatient = getQueuedItemsForCollection("patients").find(p => p.id === id);
       if (queuedPatient) {
         setPatient({ id: queuedPatient.id, ...queuedPatient.data });
@@ -317,91 +354,173 @@ export default function PatientDetails() {
       return;
     }
 
-    try {
-      const docSnap = await getDoc(doc(db, "patients", id!));
-      if (docSnap.exists()) setPatient({ id: docSnap.id, ...docSnap.data() });
-    } catch (e) {
-      console.error("Error fetching patient, using fallback offline storage:", e);
+    const unsubscribe = onSnapshot(doc(db, "patients", id), (docSnap) => {
+      if (docSnap.exists()) {
+        setPatient({ id: docSnap.id, ...docSnap.data() });
+      }
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching patient with onSnapshot: ", err);
+      // Fallback
       const queuedPatient = getQueuedItemsForCollection("patients").find(p => p.id === id);
       if (queuedPatient) {
         setPatient({ id: queuedPatient.id, ...queuedPatient.data });
       }
-    }
-    setLoading(false);
-  };
-
-  const fetchCases = async () => {
-    let fetchedCases: any[] = [];
-    if (!id?.startsWith("offline_")) {
-      try {
-        const q = query(
-          collection(db, "medical_cases"), 
-          where("patientId", "==", id!)
-        );
-        const querySnapshot = await getDocs(q);
-        fetchedCases = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e) {
-        console.error("Failed to fetch cases online, reverting to offline merge:", e);
-      }
-    }
-
-    const offlineCases = getQueuedItemsForCollection("medical_cases")
-      .filter((item: any) => item.data.patientId === id)
-      .map((item: any) => ({ id: item.id, ...item.data }));
-
-    const mergedCases = [...offlineCases, ...fetchedCases];
-
-    mergedCases.sort((a: any, b: any) => {
-      const getMillis = (t: any) => {
-        if (!t) return 0;
-        if (typeof t.toMillis === 'function') return t.toMillis();
-        if (t.seconds) return t.seconds * 1000;
-        try { return new Date(t).getTime(); } catch {}
-        return 0;
-      };
-      return getMillis(b.createdAt) - getMillis(a.createdAt);
+      setLoading(false);
     });
 
-    setCases(mergedCases);
-    if (mergedCases.length > 0 && !selectedCase) {
-      setSelectedCase(mergedCases[0]);
+    return () => unsubscribe();
+  }, [id]);
+
+  useEffect(() => {
+    const resolvedHospitalId = hospitalId || patient?.hospitalId || profile?.hospitalId || "";
+    if (!resolvedHospitalId) return;
+
+    let unsubscribe = () => {};
+
+    if (!isOfflineMode) {
+      const q = query(
+        collection(db, "patients"),
+        where("hospitalId", "==", resolvedHospitalId)
+      );
+
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAllPatients(fetched);
+      }, (err) => {
+        console.error("Error loading all patients for department counts in detail view: ", err);
+      });
     }
-  };
 
-  const fetchNotes = async (caseId: string) => {
-    let fetchedNotes: any[] = [];
-    if (!caseId?.startsWith("offline_")) {
-      try {
-        const q = query(
-          collection(db, "evolution_notes"), 
-          where("caseId", "==", caseId)
-        );
-        const querySnapshot = await getDocs(q);
-        fetchedNotes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } catch (e) {
-        console.error("Failed to fetch notes online, reverting to offline merge:", e);
-      }
+    return () => unsubscribe();
+  }, [hospitalId, patient?.hospitalId, profile?.hospitalId, isOfflineMode]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    let unsubscribe = () => {};
+    
+    if (!id.startsWith("offline_")) {
+      const q = query(
+        collection(db, "medical_cases"), 
+        where("patientId", "==", id)
+      );
+      
+      unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const fetchedCases = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const offlineCases = getQueuedItemsForCollection("medical_cases")
+          .filter((item: any) => item.data.patientId === id)
+          .map((item: any) => ({ id: item.id, ...item.data }));
+
+        const mergedCases = [...offlineCases, ...fetchedCases];
+
+        mergedCases.sort((a: any, b: any) => {
+          const getMillis = (t: any) => {
+            if (!t) return 0;
+            if (typeof t.toMillis === 'function') return t.toMillis();
+            if (t.seconds) return t.seconds * 1000;
+            try { return new Date(t).getTime(); } catch {}
+            return 0;
+          };
+          return getMillis(b.createdAt) - getMillis(a.createdAt);
+        });
+
+        setCases(mergedCases);
+        setSelectedCase(prev => {
+          if (prev) {
+            const matched = mergedCases.find(c => c.id === prev.id);
+            if (matched) return matched;
+          }
+          return mergedCases.length > 0 ? mergedCases[0] : null;
+        });
+      }, (err) => {
+        console.error("Error fetching cases online via onSnapshot:", err);
+      });
+    } else {
+      const offlineCases = getQueuedItemsForCollection("medical_cases")
+        .filter((item: any) => item.data.patientId === id)
+        .map((item: any) => ({ id: item.id, ...item.data }));
+      setCases(offlineCases);
+      setSelectedCase(prev => prev || (offlineCases.length > 0 ? offlineCases[0] : null));
     }
 
-    const offlineNotes = getQueuedItemsForCollection("evolution_notes")
-      .filter((item: any) => item.data.caseId === caseId)
-      .map((item: any) => ({ id: item.id, ...item.data }));
+    return () => unsubscribe();
+  }, [id]);
 
-    const mergedNotes = [...offlineNotes, ...fetchedNotes];
+  useEffect(() => {
+    if (!id) return;
 
-    mergedNotes.sort((a: any, b: any) => {
-      const getMillis = (t: any) => {
-        if (!t) return 0;
-        if (typeof t.toMillis === 'function') return t.toMillis();
-        if (t.seconds) return t.seconds * 1000;
-        try { return new Date(t).getTime(); } catch {}
-        return 0;
-      };
-      return getMillis(b.createdAt) - getMillis(a.createdAt);
-    });
+    let unsubscribe = () => {};
 
-    setNotes(mergedNotes);
-  };
+    if (!id.startsWith("offline_")) {
+      const q = query(
+        collection(db, "payments"),
+        where("patientId", "==", id)
+      );
+
+      unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const fetchedPayments = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setPatientPayments(fetchedPayments);
+      }, (err) => {
+        console.error("Failed to fetch payments for patient in details:", err);
+      });
+    }
+
+    return () => unsubscribe();
+  }, [id]);
+
+  useEffect(() => {
+    if (!selectedCase) {
+      setNotes([]);
+      return;
+    }
+
+    const caseId = selectedCase.id;
+    let unsubscribe = () => {};
+
+    if (!caseId.startsWith("offline_")) {
+      const q = query(
+        collection(db, "evolution_notes"), 
+        where("caseId", "==", caseId)
+      );
+
+      unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const fetchedNotes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const offlineNotes = getQueuedItemsForCollection("evolution_notes")
+          .filter((item: any) => item.data.caseId === caseId)
+          .map((item: any) => ({ id: item.id, ...item.data }));
+
+        const mergedNotes = [...offlineNotes, ...fetchedNotes];
+
+        mergedNotes.sort((a: any, b: any) => {
+          const getMillis = (t: any) => {
+            if (!t) return 0;
+            if (typeof t.toMillis === 'function') return t.toMillis();
+            if (t.seconds) return t.seconds * 1000;
+            try { return new Date(t).getTime(); } catch {}
+            return 0;
+          };
+          return getMillis(b.createdAt) - getMillis(a.createdAt);
+        });
+
+        setNotes(mergedNotes);
+      }, (err) => {
+        console.error("Error fetching notes via onSnapshot: ", err);
+      });
+    } else {
+      const offlineNotes = getQueuedItemsForCollection("evolution_notes")
+        .filter((item: any) => item.data.caseId === caseId)
+        .map((item: any) => ({ id: item.id, ...item.data }));
+      setNotes(offlineNotes);
+    }
+
+    return () => unsubscribe();
+  }, [selectedCase?.id]);
+
+  // Compatibility stubs for state refetches
+  const fetchPatient = async () => {};
+  const fetchCases = async () => {};
+  const fetchNotes = async (caseId: string) => {};
 
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -655,6 +774,40 @@ export default function PatientDetails() {
     }
   };
 
+  const standardDepts = [
+    "General Medicine",
+    "Pediatrics",
+    "Emergency",
+    "Cardiology"
+  ];
+
+  const counts: Record<string, { original: string; count: number }> = {};
+  const offlinePatients = getQueuedItemsForCollection("patients")
+    .filter((item: any) => item.data.hospitalId === (hospitalId || patient?.hospitalId || ""))
+    .map((item: any) => ({ id: item.id, ...item.data }));
+  const mergedPatients = [...offlinePatients, ...allPatients];
+
+  mergedPatients.forEach((p) => {
+    if (!p.department) return;
+    const dept = p.department.trim();
+    if (!dept) return;
+
+    const isStandardState2 = standardDepts.some(
+      sd => sd.toLowerCase() === dept.toLowerCase()
+    );
+    if (!isStandardState2) {
+      const key = dept.toLowerCase();
+      if (!counts[key]) {
+        counts[key] = { original: dept, count: 0 };
+      }
+      counts[key].count += 1;
+    }
+  });
+
+  const dynamicDepts = Object.values(counts)
+    .filter(item => item.count >= 3)
+    .map(item => item.original);
+
   if (loading) return <div>Loading Profile...</div>;
   if (!patient) return <div>Patient not found.</div>;
 
@@ -771,7 +924,7 @@ export default function PatientDetails() {
                     </div>
                     <p className="text-sm font-bold truncate group-hover:underline">{c.title}</p>
                     <div className="flex items-center justify-between gap-1 mt-2 pt-1 border-t border-dashed border-slate-100 text-[9px] font-mono text-slate-500">
-                      <span className="font-bold text-slate-800 bg-slate-100 border border-slate-200 px-1 uppercase shrink-0">{c.authorRole || "STAFF"}</span>
+                      <span className="font-bold text-slate-800 bg-slate-100 border border-slate-200 px-1 uppercase shrink-0">{c.authorRole ? t(c.authorRole.toUpperCase()) : "STAFF"}</span>
                       <span className="truncate">
                          {c.createdAt?.seconds ? format(c.createdAt.toDate(), language === 'fr' ? 'HH:mm' : 'hh:mm a') : t("recentlyAdded")}
                       </span>
@@ -801,7 +954,7 @@ export default function PatientDetails() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono opacity-60 uppercase tracking-wider pl-8">
                       <span>{t("addedByRole") || "Added by role"}:</span>
-                      <span className="font-bold text-slate-800 bg-slate-100 border border-slate-200 px-1 py-0.5">{selectedCase.authorRole || "STAFF"}</span>
+                      <span className="font-bold text-slate-800 bg-slate-100 border border-slate-200 px-1 py-0.5">{selectedCase.authorRole ? t(selectedCase.authorRole.toUpperCase()) : "STAFF"}</span>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
@@ -1034,28 +1187,20 @@ export default function PatientDetails() {
                        <textarea
                         value={newNote}
                         onChange={(e) => setNewNote(e.target.value)}
-                        placeholder="ADD_EVOLUTION_REPORT..."
+                        placeholder={language === 'fr' ? "AJOUTER_RAPPORT_EVOLUTION..." : "ADD_EVOLUTION_REPORT..."}
                         className="w-full bg-app-bg/30 border border-app-line p-4 font-mono text-sm min-h-[140px] focus:outline-none focus:bg-white focus:ring-1 focus:ring-app-ink transition-all shadow-inner block"
                       />
                       <div className="absolute top-3 right-3 hidden sm:flex gap-2">
                          <span className="text-[9px] font-mono opacity-30 bg-white/80 px-1">MD_EDITOR_ACTIVE</span>
                       </div>
                     </div>
-                    <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
-                      <div className="flex gap-4 overflow-x-auto no-scrollbar pb-1">
-                          <button type="button" className="shrink-0 text-[10px] uppercase font-mono opacity-40 hover:opacity-100 transition-opacity flex items-center gap-1.5 whitespace-nowrap">
-                            <Stethoscope className="w-3.5 h-3.5" /> EQUIP_LINK
-                          </button>
-                          <button type="button" className="shrink-0 text-[10px] uppercase font-mono opacity-40 hover:opacity-100 transition-opacity flex items-center gap-1.5 whitespace-nowrap">
-                            <Pill className="w-3.5 h-3.5" /> MED_REQ
-                          </button>
-                      </div>
+                    <div className="flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-4">
                       <button 
                         type="submit"
                         disabled={!newNote.trim()}
                         className="h-10 sm:h-12 bg-app-ink text-app-bg px-8 flex items-center justify-center gap-2 font-mono uppercase text-xs tracking-widest hover:opacity-90 active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none"
                       >
-                        SUBMIT <Send className="w-3 h-3" />
+                        {language === 'fr' ? "SOUMETTRE" : "SUBMIT"} <Send className="w-3 h-3" />
                       </button>
                     </div>
                   </form>
@@ -1065,7 +1210,7 @@ export default function PatientDetails() {
               {/* Timeline of Evolution */}
               <div className="space-y-4">
                 <h4 className="col-header border-b border-app-line pb-2 font-bold tracking-[0.2em] flex items-center justify-between">
-                  EVOLUTION_STREAM
+                  {language === 'fr' ? "FLUX_EVOLUTION" : "EVOLUTION_STREAM"}
                   <span className="text-[9px] font-normal opacity-50">{notes.length} RECORDS</span>
                 </h4>
                 <div className="space-y-2">
@@ -1081,7 +1226,7 @@ export default function PatientDetails() {
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold font-mono tracking-tight">{note.authorName}</span>
-                            <span className="text-[8px] sm:text-[9px] border border-app-line px-1.5 py-0.5 opacity-50 uppercase font-mono bg-slate-50">{note.authorRole}</span>
+                            <span className="text-[8px] sm:text-[9px] border border-app-line px-1.5 py-0.5 opacity-50 uppercase font-mono bg-slate-50">{note.authorRole ? t(note.authorRole.toUpperCase()) : ""}</span>
                           </div>
                           
                           <div className="flex items-center gap-3">
@@ -1603,7 +1748,7 @@ export default function PatientDetails() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("birthDate") || "Date of Birth"}</label>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{(t("birthDate") || "Date of Birth")} {language === 'fr' ? "(JJ-MM-AAAA)" : "(MM-DD-YYYY)"}</label>
                   <input 
                     type="date" 
                     required 
@@ -1650,16 +1795,48 @@ export default function PatientDetails() {
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-widest">{t("department")}</label>
                 <select 
-                  value={editPatientForm.department}
-                  onChange={(e) => setEditPatientForm({...editPatientForm, department: e.target.value})}
+                  value={selectedDeptOption}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedDeptOption(val);
+                    if (val === "Other") {
+                      setEditPatientForm({...editPatientForm, department: customDeptTyped});
+                    } else {
+                      setEditPatientForm({...editPatientForm, department: val});
+                    }
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 p-2 text-sm focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none transition-all font-sans font-medium rounded"
                 >
                   <option value="General Medicine">{t("generalMedicineDept")}</option>
                   <option value="Pediatrics">{t("pediatricsDept")}</option>
                   <option value="Emergency">{t("emergencyDept")}</option>
                   <option value="Cardiology">{t("cardiologyDept")}</option>
+                  {dynamicDepts.map((dOpt) => (
+                    <option key={dOpt} value={dOpt}>{dOpt}</option>
+                  ))}
+                  <option value="Other">{language === 'fr' ? "Autre (Saisir...)" : "Other (Type...)"}</option>
                 </select>
               </div>
+
+              {selectedDeptOption === "Other" && (
+                <div className="mt-3">
+                  <label className="block text-[10px] uppercase font-bold text-sky-600 mb-1 tracking-widest">
+                    {language === 'fr' ? "Saisir le nom du Département" : "Type Department Name"}
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    value={customDeptTyped}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomDeptTyped(val);
+                      setEditPatientForm({...editPatientForm, department: val});
+                    }}
+                    placeholder={language === 'fr' ? "Ex: Pneumologie" : "E.g., Oncology"}
+                    className="w-full bg-slate-50 border border-sky-200 p-2 text-sm focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none transition-all font-sans font-medium rounded"
+                  />
+                </div>
+              )}
 
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 pt-4 border-t border-slate-100">
                 <button 

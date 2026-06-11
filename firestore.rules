@@ -37,6 +37,7 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow create: if isSystemAdmin();
       allow update: if isSystemAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow delete: if isSystemAdmin();
     }
 
     match /patients/{patientId} {
@@ -69,7 +70,7 @@ service cloud.firestore {
         allow read, write: if isSignedIn();
     }
 
-    match /healthone_hospitals/{id} {
+    match /healthone_hospitals/{id=**} {
         allow read, write: if isSignedIn();
     }
   }

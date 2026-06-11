@@ -541,6 +541,8 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
 
   const mergedPatients = [...offlinePatients, ...patients];
 
+  const emergencyCount = mergedPatients.filter(p => p.department === "Emergency" || p.department?.toLowerCase() === "urgence" || p.department?.toLowerCase() === "urgences").length;
+
   const displayList = showAllStaff ? allStaff : pediatricians;
 
   const offlinePayments = getQueuedItemsForCollection("payments")
@@ -578,7 +580,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {userRole === 'REGISTER' ? (
           <StatCard 
             title={language === 'fr' ? "Revenus (USD / FC)" : "Revenue (USD / FC)"} 
@@ -591,14 +593,13 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
           <StatCard title={t("labRegistry")} value={mergedPatients.length.toString()} icon={Users} trend="+12 today" variant="dark" />
         )}
         <StatCard title={userRole === 'REGISTER' ? t("labRegistry") : t("avgTriageWait")} value={userRole === 'REGISTER' ? mergedPatients.length.toString() : "14 min"} icon={userRole === 'REGISTER' ? Users : Clock} trend={userRole === 'REGISTER' ? "+12 today" : "↑ 2m vs yesterday"} />
-        <StatCard title={t("insuranceVerified")} value="82%" icon={CheckCircle2} trend="Optimal" />
-        <StatCard title={t("emergencyAdmits")} value="03" icon={Activity} trend="Active Now" />
+        <StatCard title={t("emergencyAdmits")} value={String(emergencyCount).padStart(2, '0')} icon={Activity} trend="Active Now" />
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Registration Terminal & Today's Load Side-by-Side on top */}
-        <div className="col-span-1 lg:col-span-12 flex flex-col sm:flex-row gap-4">
-          <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-xl shadow-slate-200 flex-1">
+        {/* Registration Terminal */}
+        <div className="col-span-1 lg:col-span-12">
+          <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-xl shadow-slate-200">
             <h3 className="text-xl font-bold tracking-tight mb-2 italic underline decoration-blue-500 underline-offset-4">{t("regTerminal")}</h3>
             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-6">Queue Management v4.2</p>
             
@@ -647,22 +648,6 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
                   </div>
                 </div>
               </button>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex-1 flex flex-col justify-between min-h-[160px]">
-            <div>
-              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">{t("appointmentLoad")}</p>
-              <h4 className="text-4xl font-black text-slate-800 tracking-tight">12 / 24</h4>
-            </div>
-            <div className="space-y-3">
-              <div className="flex justify-between text-[10px] font-bold">
-                <span className="text-slate-400 uppercase">{t("dailyCapacity")}</span>
-                <span className="text-blue-600">50%</span>
-              </div>
-              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                <div className="bg-blue-500 h-2.5 rounded-full w-1/2" />
-              </div>
             </div>
           </div>
         </div>

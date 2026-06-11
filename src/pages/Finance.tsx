@@ -8,7 +8,8 @@ import {
   serverTimestamp,
   orderBy,
   doc,
-  updateDoc
+  updateDoc,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -79,7 +80,28 @@ export default function Finance() {
   }, [viewingPatientPaymentsId]);
 
   useEffect(() => {
-    if (profile) fetchPayments();
+    if (!profile) return;
+    setLoading(true);
+    const userRole = getNormalizedRole(profile?.role);
+    const isSuper = userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN";
+    let q;
+    if (isSuper) {
+      q = query(collection(db, "payments"));
+    } else {
+      q = query(
+        collection(db, "payments"), 
+        where("hospitalId", "==", hospitalId || "")
+      );
+    }
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedPayments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      setPayments(fetchedPayments);
+      setLoading(false);
+    }, (err) => {
+      console.error("Failed to fetch payments in real-time:", err);
+      setLoading(false);
+    });
+    return () => unsubscribe();
   }, [profile, hospitalId]);
 
   useEffect(() => {
@@ -248,28 +270,7 @@ export default function Finance() {
   };
 
   const fetchPayments = async () => {
-    setLoading(true);
-    try {
-      const userRole = getNormalizedRole(profile?.role);
-      const isSuper = userRole === "SUP_ADMIN" || userRole === "SYSTEM_ADMIN";
-      let q;
-      if (isSuper) {
-        q = query(
-          collection(db, "payments")
-        );
-      } else {
-        q = query(
-          collection(db, "payments"), 
-          where("hospitalId", "==", hospitalId || "")
-        );
-      }
-      const querySnapshot = await getDocs(q);
-      const fetchedPayments = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-      setPayments(fetchedPayments);
-    } catch (e) {
-      console.error("Failed to fetch payments online:", e);
-    }
-    setLoading(false);
+    // Handled in real-time by onSnapshot subscription
   };
 
   const handleAddPayment = async (e: React.FormEvent) => {

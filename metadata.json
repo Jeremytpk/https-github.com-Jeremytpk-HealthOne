@@ -1,6 +1,6 @@
 {
   "name": "HealthOne",
   "description": "Comprehensive Multi-Tenant Hospital Management System with Patient tracking, HR, Pharmacy, and Financial management.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
