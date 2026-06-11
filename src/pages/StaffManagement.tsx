@@ -247,7 +247,7 @@ export default function StaffManagement() {
         uid: newUid,
         name: newStaffData.name.trim(),
         fullName: newStaffData.name.trim(),
-        role: newStaffData.role,
+        role: (newStaffData.role === "CASHIER" || String(newStaffData.role).toLowerCase() === "cashier" || String(newStaffData.role).toLowerCase() === "caissier") ? "register" : newStaffData.role,
         hospitalId,
         schedule: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
         createdAt: serverTimestamp()

@@ -25,11 +25,11 @@ import { auth } from "../firebase";
 import { motion, AnimatePresence } from "motion/react";
 import { getNormalizedRole } from "../lib/utils";
 import OfflineSyncCenter from "./OfflineSyncCenter";
-import { Wifi, WifiOff, RefreshCw } from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, Eye, EyeOff } from "lucide-react";
 
 const Layout: React.FC = () => {
   const { profile } = useAuth();
-  const { t, language, setLanguage } = useLanguage();
+  const { t, language, setLanguage, hideFinance, setHideFinance } = useLanguage();
   const { isOfflineMode, queuedItems, isOnline } = useOfflineSync();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -278,6 +278,32 @@ const Layout: React.FC = () => {
                 <span className="bg-amber-500 text-white font-mono text-[9px] px-1.5 py-0.5 rounded-full font-extrabold shrink-0">
                   {queuedItems.length} pending
                 </span>
+              )}
+            </button>
+
+            {/* FINANCIAL VISIBILITY TOGGLE (Eye/EyeOff) */}
+            <button
+              onClick={() => setHideFinance(!hideFinance)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-full text-[10px] font-bold transition-all cursor-pointer select-none ${
+                hideFinance
+                  ? 'border-indigo-200 text-indigo-700 bg-indigo-50/40 hover:bg-indigo-50/60'
+                  : 'border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 hover:text-slate-950'
+              }`}
+              title={hideFinance 
+                ? (language === 'fr' ? "Afficher les chiffres financiers" : "Show financial figures")
+                : (language === 'fr' ? "Masquer les chiffres financiers" : "Hide financial figures")
+              }
+            >
+              {hideFinance ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5 text-indigo-600" />
+                  <span className="hidden xs:inline uppercase tracking-wider">{language === 'fr' ? "Fonds Masqués" : "Funds Hidden"}</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden xs:inline uppercase tracking-wider">{language === 'fr' ? "Fonds Visibles" : "Funds Visible"}</span>
+                </>
               )}
             </button>
 

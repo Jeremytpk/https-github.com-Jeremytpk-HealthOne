@@ -6,6 +6,8 @@ interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
+  hideFinance: boolean;
+  setHideFinance: (val: boolean) => void;
 }
 
 const translations: Record<Language, Record<string, string>> = {
@@ -572,16 +574,24 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return (localStorage.getItem("lang") as Language) || "en";
   });
 
+  const [hideFinance, setHideFinance] = useState<boolean>(() => {
+    return localStorage.getItem("hide_finance") === "true";
+  });
+
   useEffect(() => {
     localStorage.setItem("lang", language);
   }, [language]);
+
+  useEffect(() => {
+    localStorage.setItem("hide_finance", String(hideFinance));
+  }, [hideFinance]);
 
   const t = (key: string) => {
     return translations[language][key] || key;
   };
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage, t, hideFinance, setHideFinance }}>
       {children}
     </LanguageContext.Provider>
   );

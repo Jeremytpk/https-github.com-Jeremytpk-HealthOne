@@ -14,6 +14,9 @@ export function getNormalizedRole(role: string | null | undefined): string {
   if (upper === "SUPADMIN" || upper === "SUP_ADMIN") {
     return "SUP_ADMIN";
   }
+  if (upper === "CASHIER" || upper === "CAISSIER" || upper === "REGISTER") {
+    return "REGISTER";
+  }
   return upper;
 }
 

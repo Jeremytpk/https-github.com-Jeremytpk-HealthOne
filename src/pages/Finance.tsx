@@ -33,7 +33,7 @@ import { getNormalizedRole } from "../lib/utils";
 
 export default function Finance() {
   const { hospitalId, profile } = useAuth();
-  const { t, language } = useLanguage();
+  const { t, language, hideFinance } = useLanguage();
   const { isOfflineMode, addOfflineDoc, getQueuedItemsForCollection } = useOfflineSync();
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -389,16 +389,16 @@ export default function Finance() {
         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
            <div className="bg-white border border-app-line px-5 py-2.5 flex flex-col justify-center min-w-[145px] sm:min-w-[170px] flex-1">
              <span className="col-header text-[9px] uppercase font-mono tracking-wider opacity-60">{language === 'fr' ? "Total Quotidien (USD)" : "Daily Total (USD)"}</span>
-             <span className="font-mono font-bold text-xl sm:text-2xl tracking-tighter text-slate-900">${totalUSD.toLocaleString()}</span>
+             <span className="font-mono font-bold text-xl sm:text-2xl tracking-tighter text-slate-900">{hideFinance ? "••••" : `$${totalUSD.toLocaleString()}`}</span>
              <span className="font-mono text-[10px] text-slate-400 mt-0.5">
-               ≈ {(totalUSD * USD_TO_FC).toLocaleString()} FC
+               {hideFinance ? "••••" : `≈ ${(totalUSD * USD_TO_FC).toLocaleString()} FC`}
              </span>
            </div>
            <div className="bg-white border border-app-line px-5 py-2.5 flex flex-col justify-center min-w-[145px] sm:min-w-[170px] flex-1">
              <span className="col-header text-[9px] uppercase font-mono tracking-wider opacity-60">{language === 'fr' ? "Total Quotidien (FC)" : "Daily Total (FC)"}</span>
-             <span className="font-mono font-bold text-xl sm:text-2xl tracking-tighter text-emerald-700">{totalCDF.toLocaleString()} FC</span>
+             <span className="font-mono font-bold text-xl sm:text-2xl tracking-tighter text-emerald-700">{hideFinance ? "••••" : `${totalCDF.toLocaleString()} FC`}</span>
              <span className="font-mono text-[10px] text-slate-600/80 mt-0.5">
-               ≈ ${Math.round((totalCDF / USD_TO_FC) * 100) / 100} USD
+               {hideFinance ? "••••" : `≈ $${Math.round((totalCDF / USD_TO_FC) * 100) / 100} USD`}
              </span>
            </div>
            <button 
@@ -466,9 +466,9 @@ export default function Finance() {
                       return (
                         <div className="text-[9px] font-mono text-emerald-700 font-bold uppercase mt-0.5 truncate bg-emerald-50 border border-emerald-100/50 px-1 py-0.5 inline-block w-fit">
                           {language === 'fr' ? "Somme du Cas : " : "Case Sum: "}
-                          {usdSum > 0 && `$${usdSum.toLocaleString()} USD`}
-                          {usdSum > 0 && fcSum > 0 && " + "}
-                          {fcSum > 0 && `${fcSum.toLocaleString()} FC`}
+                          {hideFinance ? "••••" : (usdSum > 0 && `$${usdSum.toLocaleString()} USD`)}
+                          {!hideFinance && usdSum > 0 && fcSum > 0 && " + "}
+                          {!hideFinance && fcSum > 0 && `${fcSum.toLocaleString()} FC`}
                         </div>
                       );
                     })()}
@@ -482,19 +482,19 @@ export default function Finance() {
                   {p.currency === "CDF" || p.currency === "CFC" || p.currency === "FC" ? (
                     <>
                       <span className="font-mono font-bold text-sm text-slate-900">
-                        {Number(p.amount).toLocaleString()} FC
+                        {hideFinance ? "••••" : `${Number(p.amount).toLocaleString()} FC`}
                       </span>
                       <span className="font-mono text-[10px] text-emerald-600 font-bold block sm:mt-0.5">
-                        ≈ ${(Number(p.amount) / 2200).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                        {hideFinance ? "••••" : `≈ $${(Number(p.amount) / 2200).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`}
                       </span>
                     </>
                   ) : (
                     <>
                       <span className="font-mono font-bold text-sm text-slate-900">
-                        ${Number(p.amount).toLocaleString()} USD
+                        {hideFinance ? "••••" : `$${Number(p.amount).toLocaleString()} USD`}
                       </span>
                       <span className="font-mono text-[10px] text-emerald-600 font-bold block sm:mt-0.5">
-                        ≈ {(Number(p.amount) * 2200).toLocaleString()} FC
+                        {hideFinance ? "••••" : `≈ ${(Number(p.amount) * 2200).toLocaleString()} FC`}
                       </span>
                     </>
                   )}
@@ -760,11 +760,11 @@ export default function Finance() {
                     <div className="grid grid-cols-2 gap-3 bg-emerald-50/20 border border-emerald-100 p-3 sm:p-4 rounded">
                       <div>
                         <span className="text-[9px] uppercase font-mono tracking-wider opacity-60 block">{language === 'fr' ? "Total Payé (USD)" : "Total Paid (USD)"}</span>
-                        <span className="font-mono font-bold text-lg sm:text-xl text-slate-800">${grandTotalUsd.toLocaleString()} USD</span>
+                        <span className="font-mono font-bold text-lg sm:text-xl text-slate-800">{hideFinance ? "••••" : `$${grandTotalUsd.toLocaleString()} USD`}</span>
                       </div>
                       <div>
                         <span className="text-[9px] uppercase font-mono tracking-wider opacity-60 block">{language === 'fr' ? "Total Payé (FC)" : "Total Paid (FC)"}</span>
-                        <span className="font-mono font-bold text-lg sm:text-xl text-emerald-700">{grandTotalFc.toLocaleString()} FC</span>
+                        <span className="font-mono font-bold text-lg sm:text-xl text-emerald-700">{hideFinance ? "••••" : `${grandTotalFc.toLocaleString()} FC`}</span>
                       </div>
                     </div>
 
@@ -789,9 +789,15 @@ export default function Finance() {
                                   <span className="text-[9px] opacity-40">{language === 'fr' ? "Dossier" : "Status"}: {c.status}</span>
                                 </div>
                                 <div className="text-right shrink-0 font-bold text-emerald-600">
-                                  {cUsd > 0 && <div>${cUsd.toLocaleString()} USD</div>}
-                                  {cFc > 0 && <div>{cFc.toLocaleString()} FC</div>}
-                                  {cUsd === 0 && cFc === 0 && <div className="text-slate-400">$0.00</div>}
+                                  {hideFinance ? (
+                                    <div>••••</div>
+                                  ) : (
+                                    <>
+                                      {cUsd > 0 && <div>${cUsd.toLocaleString()} USD</div>}
+                                      {cFc > 0 && <div>{cFc.toLocaleString()} FC</div>}
+                                      {cUsd === 0 && cFc === 0 && <div className="text-slate-400">$0.00</div>}
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -824,7 +830,7 @@ export default function Finance() {
                                   {pt.reference && <p className="text-[9px] opacity-40">REF: {pt.reference}</p>}
                                 </div>
                                 <span className="font-bold text-slate-900 shrink-0">
-                                  {pt.currency === "FC" || pt.currency === "CDF" || pt.currency === "CFC" ? `${Number(pt.amount).toLocaleString()} FC` : `$${Number(pt.amount).toLocaleString()} USD`}
+                                  {hideFinance ? "••••" : (pt.currency === "FC" || pt.currency === "CDF" || pt.currency === "CFC" ? `${Number(pt.amount).toLocaleString()} FC` : `$${Number(pt.amount).toLocaleString()} USD`)}
                                 </span>
                               </div>
                             );

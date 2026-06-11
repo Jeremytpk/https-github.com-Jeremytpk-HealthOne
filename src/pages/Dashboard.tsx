@@ -305,7 +305,7 @@ const SupAdminDashboard = ({ t }: any) => {
 
 
 const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
-  const { language } = useLanguage();
+  const { language, hideFinance } = useLanguage();
   const { isOfflineMode, getQueuedItemsForCollection, removeQueuedItem } = useOfflineSync();
 
   const [patients, setPatients] = useState<any[]>(() => {
@@ -560,7 +560,7 @@ const ReceptionistDashboard = ({ t, profile, hospitalId }: any) => {
   }).format(totalUSD);
 
   const formattedCDF = `${totalCDF.toLocaleString(language === 'fr' ? 'fr-CA' : 'en-US')} FC`;
-  const formattedRevenue = `${formattedUSD} / ${formattedCDF}`;
+  const formattedRevenue = hideFinance ? "••••" : `${formattedUSD} / ${formattedCDF}`;
 
   return (
     <div className="space-y-4">
@@ -1186,6 +1186,7 @@ const DoctorDashboard = ({ t, hospitalId }: any) => {
 
 const PharmacistDashboard = ({ t }: any) => {
   const { profile } = useAuth();
+  const { hideFinance } = useLanguage();
   const userRole = getNormalizedRole(profile?.role);
   const isFinancialAllowed = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
 
@@ -1196,7 +1197,7 @@ const PharmacistDashboard = ({ t }: any) => {
         <StatCard title={t("lowStockAlarms")} value="06" icon={TrendingUp} trend="Needs ordering" />
         <StatCard title={t("narcoticsCount")} value="Verified" icon={CheckCircle2} trend="Confirmed 08:00" />
         {isFinancialAllowed ? (
-          <StatCard title={t("dailyTurnover")} value="$4,200" icon={TrendingUp} trend="↑ 5% vs Avg" />
+          <StatCard title={t("dailyTurnover")} value={hideFinance ? "••••" : "$4,200"} icon={TrendingUp} trend="↑ 5% vs Avg" />
         ) : (
           <StatCard title={t("dispensingQueue") || "Active Patients"} value="12" icon={Activity} trend="Normal load" />
         )}
@@ -1263,7 +1264,7 @@ const CashierDashboard = ({ t }: any) => {
 
 const AdminDashboard = ({ t, hospitalId }: any) => {
   const { profile, updateProfile } = useAuth();
-  const { language } = useLanguage();
+  const { language, hideFinance } = useLanguage();
   const { isOfflineMode, getQueuedItemsForCollection } = useOfflineSync();
   const userRole = getNormalizedRole(profile?.role);
   const isFinancialAllowed = userRole === "REGISTER" || userRole === "ADMIN" || userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
@@ -1412,7 +1413,7 @@ const AdminDashboard = ({ t, hospitalId }: any) => {
   }).format(totalUSD);
 
   const formattedCDF = `${totalCDF.toLocaleString(language === 'fr' ? 'fr-CA' : 'en-US')} FC`;
-  const formattedRevenue = `${formattedUSD} / ${formattedCDF}`;
+  const formattedRevenue = hideFinance ? "••••" : `${formattedUSD} / ${formattedCDF}`;
 
   const lowStockItems = inventory.filter(item => (Number(item.stock) || 0) <= (Number(item.minStock) || 0));
   const reorderCount = lowStockItems.length;

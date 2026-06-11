@@ -54,7 +54,7 @@ import {
 
 export default function SystemAdmin() {
   const { profile } = useAuth();
-  const { language, t } = useLanguage();
+  const { language, t, hideFinance } = useLanguage();
 
   const userRole = getNormalizedRole(profile?.role);
   if (userRole !== "SYSTEM_ADMIN" && userRole !== "SUP_ADMIN") {
@@ -446,6 +446,7 @@ export default function SystemAdmin() {
       const newUid = userCredential.user.uid;
 
       // Save user record inside the main Firestore "users" collection
+      const finalRole = (userForm.role === "CASHIER" || String(userForm.role).toUpperCase() === "CASHIER" || String(userForm.role).toUpperCase() === "CAISSIER") ? "register" : userForm.role;
       await setDoc(doc(db, "users", newUid), {
         id: newUid,
         uid: newUid,
@@ -454,7 +455,7 @@ export default function SystemAdmin() {
         username: userForm.username.toLowerCase().trim(),
         email: userForm.email.trim(),
         password: userForm.password.trim(),
-        role: userForm.role,
+        role: finalRole,
         hospitalId: userForm.hospitalId || "", // empty or selected hospital ID
         status: "ACTIVE",
         createdAt: serverTimestamp()
@@ -490,9 +491,10 @@ export default function SystemAdmin() {
     const newRole = userRolesInput[userId];
     if (!newRole) return;
     
+    const finalRole = (newRole === "CASHIER" || String(newRole).toUpperCase() === "CASHIER" || String(newRole).toUpperCase() === "CAISSIER") ? "register" : newRole;
     setUpdatingUserId(userId);
     try {
-      await updateDoc(doc(db, "users", userId), { role: newRole });
+      await updateDoc(doc(db, "users", userId), { role: finalRole });
       alert("User role updated successfully!");
       fetchUsers();
     } catch (error) {
@@ -521,12 +523,13 @@ export default function SystemAdmin() {
     setUpdatingUserId(selectedEditUser.id);
     try {
       const userDocRef = doc(db, "users", selectedEditUser.id);
+      const finalRole = (editUserForm.role === "CASHIER" || String(editUserForm.role).toUpperCase() === "CASHIER" || String(editUserForm.role).toUpperCase() === "CAISSIER") ? "register" : editUserForm.role;
       await updateDoc(userDocRef, {
         name: editUserForm.name.trim(),
         fullName: editUserForm.name.trim(),
         username: editUserForm.username.toLowerCase().trim(),
         email: editUserForm.email.trim(),
-        role: editUserForm.role,
+        role: finalRole,
         hospitalId: editUserForm.hospitalId,
         status: editUserForm.status,
       });
@@ -1241,14 +1244,14 @@ export default function SystemAdmin() {
           <div className="mt-3">
             <div className="flex flex-col">
               <span className="text-xl font-mono font-bold text-slate-800 leading-tight">
-                ${grandPaymentsUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {hideFinance ? "••••" : `$${grandPaymentsUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               </span>
               <span className="text-xs font-mono font-medium text-slate-500">
-                + {grandPaymentsFC.toLocaleString()} FC
+                + {hideFinance ? "••••" : `${grandPaymentsFC.toLocaleString()} FC`}
               </span>
             </div>
             <p className="text-[9px] font-mono opacity-60 uppercase mt-2 text-emerald-600 font-bold">
-              {language === 'fr' ? "Équivalent : " : "Equiv : "} ≈ ${grandTotalPaymentsConvertedUSD.toLocaleString(undefined, { maximumFractionDigits: 0 })} USD
+              {language === 'fr' ? "Équivalent : " : "Equiv : "} ≈ {hideFinance ? "••••" : `$${grandTotalPaymentsConvertedUSD.toLocaleString(undefined, { maximumFractionDigits: 0 })} USD`}
             </p>
           </div>
         </button>
@@ -1923,7 +1926,7 @@ export default function SystemAdmin() {
               {language === 'fr' ? "Ma Part Totale (USD)" : "My Total Share (USD)"}
             </span>
             <span className="font-mono font-bold text-lg sm:text-xl text-amber-700 mt-2 block">
-              ${totalAdminUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+              {hideFinance ? "••••" : `$${totalAdminUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`}
             </span>
             <p className="text-[9px] font-mono opacity-40 mt-1 uppercase">
               {language === 'fr' ? "PARTAGE DU $1 DE BASE (60% / 50%)" : "SPLIT OF BASE $1 (60% / 50%)"}
@@ -1937,7 +1940,7 @@ export default function SystemAdmin() {
               {language === 'fr' ? "D'office Hôpitaux (Avant Part. - USD)" : "Hospitals Before Split (USD)"}
             </span>
             <span className="font-mono font-bold text-lg sm:text-xl text-slate-700 mt-2 block">
-              ${totalGrossUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+              {hideFinance ? "••••" : `$${totalGrossUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`}
             </span>
             <p className="text-[9px] font-mono opacity-40 mt-1 uppercase">
               {language === 'fr' ? "MONTANT BRUT GLOBAL DE L'HÔPITAL" : "TOTAL GROSS AMOUNT OF THE HOSPITAL"}
@@ -1952,16 +1955,16 @@ export default function SystemAdmin() {
             </span>
             <div>
               <span className="font-mono font-bold text-lg sm:text-xl text-blue-700 mt-2 block">
-                ${totalHospitalUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                {hideFinance ? "••••" : `$${totalHospitalUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`}
               </span>
               <div className="mt-1 pb-1 border-t border-blue-100/50 pt-1 text-[9px] font-mono text-blue-850 space-y-0.5">
                 <div>
                   <span className="opacity-70">{language === 'fr' ? "• Part de Partition (40%/50%) : " : "• Split Share (40%/50%): "}</span>
-                  <span className="font-bold">${totalHospitalSplitShareOnlyUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="font-bold">{hideFinance ? "••••" : `$${totalHospitalSplitShareOnlyUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
                 </div>
                 <div>
                   <span className="opacity-70">{language === 'fr' ? "• D'office (100% Retenu) : " : "• Automatic (100% Above Base): "}</span>
-                  <span className="font-bold">${totalHospitalRetainedBeforeUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="font-bold">{hideFinance ? "••••" : `$${totalHospitalRetainedBeforeUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
                 </div>
               </div>
             </div>
@@ -1977,7 +1980,7 @@ export default function SystemAdmin() {
               {language === 'fr' ? "Ma Part Totale (FC)" : "My Total Share (FC)"}
             </span>
             <span className="font-mono font-bold text-lg sm:text-xl text-emerald-700 mt-2 block">
-              {totalAdminFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC
+              {hideFinance ? "••••" : `${totalAdminFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC`}
             </span>
             <p className="text-[9px] font-mono opacity-40 mt-1 uppercase">
               {language === 'fr' ? "PARTAGE DU 2200 FC DE BASE (60% / 50%)" : "SPLIT OF 2200 FC BASE (60% / 50%)"}
@@ -1991,7 +1994,7 @@ export default function SystemAdmin() {
               {language === 'fr' ? "D'office Hôpitaux (Avant Part. - FC)" : "Hospitals Before Split (FC)"}
             </span>
             <span className="font-mono font-bold text-lg sm:text-xl text-slate-700 mt-2 block">
-              {totalGrossFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC
+              {hideFinance ? "••••" : `${totalGrossFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC`}
             </span>
             <p className="text-[9px] font-mono opacity-40 mt-1 uppercase">
               {language === 'fr' ? "MONTANT BRUT GLOBAL DE L'HÔPITAL" : "TOTAL GROSS AMOUNT OF THE HOSPITAL"}
@@ -2006,16 +2009,16 @@ export default function SystemAdmin() {
             </span>
             <div>
               <span className="font-mono font-bold text-lg sm:text-xl text-teal-700 mt-2 block">
-                {totalHospitalFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC
+                {hideFinance ? "••••" : `${totalHospitalFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC`}
               </span>
               <div className="mt-1 pb-1 border-t border-teal-100/50 pt-1 text-[9px] font-mono text-teal-850 space-y-0.5">
                 <div>
                   <span className="opacity-70">{language === 'fr' ? "• Part de Partition (40%/50%) : " : "• Split Share (40%/50%): "}</span>
-                  <span className="font-bold">{totalHospitalSplitShareOnlyFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC</span>
+                  <span className="font-bold">{hideFinance ? "••••" : `${totalHospitalSplitShareOnlyFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC`}</span>
                 </div>
                 <div>
                   <span className="opacity-70">{language === 'fr' ? "• D'office (100% Retenu) : " : "• Automatic (100% Above Base): "}</span>
-                  <span className="font-bold">{totalHospitalRetainedBeforeFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC</span>
+                  <span className="font-bold">{hideFinance ? "••••" : `${totalHospitalRetainedBeforeFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC`}</span>
                 </div>
               </div>
             </div>
@@ -2089,20 +2092,20 @@ export default function SystemAdmin() {
                       </td>
                       <td className="p-3">
                         <span className="font-bold text-slate-800">
-                          {isFC 
+                          {hideFinance ? "••••" : (isFC 
                             ? `${(Number(p.amount) || 0).toLocaleString()} FC` 
-                            : `$${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            : `$${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)}
                         </span>
                       </td>
                       <td className="p-3 text-right font-bold text-emerald-700">
-                        {isFC 
+                        {hideFinance ? "••••" : (isFC 
                           ? `${Math.round(p.analysis.adminAmount).toLocaleString()} FC` 
-                          : `$${p.analysis.adminAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          : `$${p.analysis.adminAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)}
                       </td>
                       <td className="p-3 text-right font-bold text-slate-700">
-                        {isFC 
+                        {hideFinance ? "••••" : (isFC 
                           ? `${Math.round(p.analysis.hospitalAmount).toLocaleString()} FC` 
-                          : `$${p.analysis.hospitalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          : `$${p.analysis.hospitalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)}
                       </td>
                     </tr>
                   );
