@@ -581,7 +581,10 @@ export default function SystemAdmin() {
     const nameMatch = (u.name || "").toLowerCase().includes(search);
     const emailMatch = (u.email || "").toLowerCase().includes(search);
     const roleMatch = (u.role || "").toLowerCase().includes(search);
-    return nameMatch || emailMatch || roleMatch;
+    const usernameMatch = (u.username || "").toLowerCase().includes(search);
+    const hosp = hospitals.find(h => h.id === u.hospitalId);
+    const hospitalMatch = hosp ? hosp.name.toLowerCase().includes(search) : false;
+    return nameMatch || emailMatch || roleMatch || usernameMatch || hospitalMatch;
   });
 
   const getPaymentTenureAndSplit = (payment: any) => {
@@ -703,12 +706,43 @@ export default function SystemAdmin() {
   });
 
   const filteredPayments = computedPayments.filter((p: any) => {
-    // Search
-    const search = paymentSearchTerm.toLowerCase();
-    const patientNameMatch = (p.patientName || "").toLowerCase().includes(search);
+    const search = paymentSearchTerm.trim().toLowerCase();
+    if (!search) {
+      const hospitalOk = !selectedHospitalFilter || p.hospitalId === selectedHospitalFilter;
+      return hospitalOk;
+    }
+
+    // 1. Patient matching
+    const pt = patients.find(pat => pat.id === p.patientId);
+    const patientNameMatch = (p.patientName || "").toLowerCase().includes(search) || (pt?.name || pt?.fullName || "").toLowerCase().includes(search);
+    const patientPhoneMatch = pt ? (pt.phone || "").toLowerCase().includes(search) : false;
+    const patientEmailMatch = pt ? (pt.email || "").toLowerCase().includes(search) : false;
+    const patientIdMatch = (p.patientId || "").toLowerCase().includes(search);
+
+    // 2. Reference & Case ID matching
     const refMatch = (p.reference || "").toLowerCase().includes(search);
     const caseIdMatch = (p.caseId || "").toLowerCase().includes(search);
-    const searchOk = patientNameMatch || refMatch || caseIdMatch;
+    const amountMatch = String(p.amount || "").includes(search);
+
+    // 3. Hospital/Tenant matching
+    const hosp = hospitals.find(h => h.id === p.hospitalId);
+    const hospitalNameMatch = hosp ? hosp.name.toLowerCase().includes(search) : false;
+    const hospitalAddressMatch = hosp ? (hosp.address || "").toLowerCase().includes(search) : false;
+    const hospitalIdFieldMatch = (p.hospitalId || "").toLowerCase().includes(search);
+
+    // 4. User matching (matching any user associated with this hospital, or whose name matches)
+    const matchedUsers = users.filter(u => 
+      (u.name || "").toLowerCase().includes(search) || 
+      (u.username || "").toLowerCase().includes(search) || 
+      (u.email || "").toLowerCase().includes(search) ||
+      (u.role || "").toLowerCase().includes(search)
+    );
+    const userMatch = matchedUsers.some(u => u.hospitalId === p.hospitalId || u.id === p.userId || u.id === p.createdById);
+
+    const searchOk = patientNameMatch || patientPhoneMatch || patientEmailMatch || patientIdMatch ||
+                     refMatch || caseIdMatch || amountMatch ||
+                     hospitalNameMatch || hospitalAddressMatch || hospitalIdFieldMatch ||
+                     userMatch;
 
     // Hospital filter
     const hospitalOk = !selectedHospitalFilter || p.hospitalId === selectedHospitalFilter;
@@ -740,6 +774,10 @@ export default function SystemAdmin() {
     .filter(p => p.currency === "USD" || !p.currency)
     .reduce((sum, p) => sum + p.analysis.hospitalAmount, 0);
 
+  const totalHospitalSplitShareOnlyUSD = filteredPayments
+    .filter(p => p.currency === "USD" || !p.currency)
+    .reduce((sum, p) => sum + p.analysis.hospitalSplitShareOnly, 0);
+
   const totalAdminFC = filteredPayments
     .filter(p => p.currency === "FC" || p.currency === "CDF" || p.currency === "CFC")
     .reduce((sum, p) => sum + p.analysis.adminAmount, 0);
@@ -747,6 +785,10 @@ export default function SystemAdmin() {
   const totalHospitalFC = filteredPayments
     .filter(p => p.currency === "FC" || p.currency === "CDF" || p.currency === "CFC")
     .reduce((sum, p) => sum + p.analysis.hospitalAmount, 0);
+
+  const totalHospitalSplitShareOnlyFC = filteredPayments
+    .filter(p => p.currency === "FC" || p.currency === "CDF" || p.currency === "CFC")
+    .reduce((sum, p) => sum + p.analysis.hospitalSplitShareOnly, 0);
 
   // Dynamic Graphic Evolution Calculation Helpers
   const getJsDate = (createdAt: any): Date | null => {
@@ -1694,10 +1736,10 @@ export default function SystemAdmin() {
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder={language === 'fr' ? "Rechercher un paiement..." : "Search payment..."}
+                placeholder={language === 'fr' ? "Rechercher tout (patient, hôpital, utilisateur, paiement...)" : "Search everything (patient, hospital, user, payment...)"}
                 value={paymentSearchTerm}
                 onChange={(e) => setPaymentSearchTerm(e.target.value)}
-                className="bg-white border border-app-line pl-8 pr-3 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-app-ink h-9 w-48"
+                className="bg-white border border-app-line pl-8 pr-3 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-app-ink h-9 w-72"
               />
             </div>
           </div>
@@ -1726,10 +1768,10 @@ export default function SystemAdmin() {
               {language === 'fr' ? "D'office Hôpitaux (Avant Part. - USD)" : "Hospitals Before Split (USD)"}
             </span>
             <span className="font-mono font-bold text-lg sm:text-xl text-slate-700 mt-2 block">
-              ${totalHospitalRetainedBeforeUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+              ${totalGrossUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
             </span>
             <p className="text-[9px] font-mono opacity-40 mt-1 uppercase">
-              {language === 'fr' ? "CONSERVÉ À 100% (BRUT MOINS 1$)" : "RETAINED AT 100% (GROSS MINUS $1)"}
+              {language === 'fr' ? "MONTANT BRUT GLOBAL DE L'HÔPITAL" : "TOTAL GROSS AMOUNT OF THE HOSPITAL"}
             </p>
           </div>
 
@@ -1739,9 +1781,21 @@ export default function SystemAdmin() {
               <HospitalIcon className="w-3 h-3 text-blue-600" />
               {language === 'fr' ? "Part Hôpital Totale (USD)" : "Hospital Total Share (USD)"}
             </span>
-            <span className="font-mono font-bold text-lg sm:text-xl text-blue-700 mt-2 block">
-              ${totalHospitalUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
-            </span>
+            <div>
+              <span className="font-mono font-bold text-lg sm:text-xl text-blue-700 mt-2 block">
+                ${totalHospitalUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+              </span>
+              <div className="mt-1 pb-1 border-t border-blue-100/50 pt-1 text-[9px] font-mono text-blue-850 space-y-0.5">
+                <div>
+                  <span className="opacity-70">{language === 'fr' ? "• Part de Partition (40%/50%) : " : "• Split Share (40%/50%): "}</span>
+                  <span className="font-bold">${totalHospitalSplitShareOnlyUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div>
+                  <span className="opacity-70">{language === 'fr' ? "• D'office (100% Retenu) : " : "• Automatic (100% Above Base): "}</span>
+                  <span className="font-bold">${totalHospitalRetainedBeforeUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
             <p className="text-[9px] font-mono opacity-40 mt-1 uppercase">
               {language === 'fr' ? "TOTAL REÇU (PART + HORS REPARTITION)" : "TOTAL RECEIVED (SPLIT PART + REMAINDER)"}
             </p>
@@ -1768,10 +1822,10 @@ export default function SystemAdmin() {
               {language === 'fr' ? "D'office Hôpitaux (Avant Part. - FC)" : "Hospitals Before Split (FC)"}
             </span>
             <span className="font-mono font-bold text-lg sm:text-xl text-slate-700 mt-2 block">
-              {totalHospitalRetainedBeforeFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC
+              {totalGrossFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC
             </span>
             <p className="text-[9px] font-mono opacity-40 mt-1 uppercase">
-              {language === 'fr' ? "CONSERVÉ À 100% (BRUT MOINS 2200 FC)" : "RETAINED AT 100% (GROSS MINUS 2200 FC)"}
+              {language === 'fr' ? "MONTANT BRUT GLOBAL DE L'HÔPITAL" : "TOTAL GROSS AMOUNT OF THE HOSPITAL"}
             </p>
           </div>
 
@@ -1781,9 +1835,21 @@ export default function SystemAdmin() {
               <HospitalIcon className="w-3 h-3 text-teal-600" />
               {language === 'fr' ? "Part Hôpital Totale (FC)" : "Hospital Total Share (FC)"}
             </span>
-            <span className="font-mono font-bold text-lg sm:text-xl text-teal-700 mt-2 block">
-              {totalHospitalFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC
-            </span>
+            <div>
+              <span className="font-mono font-bold text-lg sm:text-xl text-teal-700 mt-2 block">
+                {totalHospitalFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC
+              </span>
+              <div className="mt-1 pb-1 border-t border-teal-100/50 pt-1 text-[9px] font-mono text-teal-850 space-y-0.5">
+                <div>
+                  <span className="opacity-70">{language === 'fr' ? "• Part de Partition (40%/50%) : " : "• Split Share (40%/50%): "}</span>
+                  <span className="font-bold">{totalHospitalSplitShareOnlyFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC</span>
+                </div>
+                <div>
+                  <span className="opacity-70">{language === 'fr' ? "• D'office (100% Retenu) : " : "• Automatic (100% Above Base): "}</span>
+                  <span className="font-bold">{totalHospitalRetainedBeforeFC.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} FC</span>
+                </div>
+              </div>
+            </div>
             <p className="text-[9px] font-mono opacity-40 mt-1 uppercase">
               {language === 'fr' ? "TOTAL REÇU (PART + HORS REPARTITION)" : "TOTAL RECEIVED (SPLIT PART + REMAINDER)"}
             </p>
