@@ -302,7 +302,8 @@ export default function StaffManagement() {
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <div className="print:hidden space-y-6 sm:space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-4xl font-serif italic font-bold tracking-tight mb-2 uppercase">{t("staffManagement")}</h1>
           <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">HR_MODULE / PERSONNEL_LOGS</p>
@@ -580,6 +581,7 @@ export default function StaffManagement() {
           role={t(viewingStaffSchedule.role)}
         />
       )}
+      </div>
 
       {/* PRINT-ONLY EXCEL-LIKE SPREADSHEET CONTAINER */}
       <div className="hidden print:block w-full bg-white text-slate-950 p-6 min-h-screen">

@@ -354,7 +354,8 @@ export default function Finance() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-2 border-b-2 border-app-line">
+      <div className="print:hidden space-y-6 sm:space-y-8">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-2 border-b-2 border-app-line">
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl sm:text-4xl font-serif italic font-bold tracking-tight uppercase leading-none">
@@ -834,6 +835,7 @@ export default function Finance() {
           </div>
         </div>
       )}
+      </div>
 
       {/* PRINT-ONLY EXCEL-LIKE SPREADSHEET CONTAINER */}
       <div className="hidden print:block w-full bg-white text-slate-950 p-6 min-h-screen">

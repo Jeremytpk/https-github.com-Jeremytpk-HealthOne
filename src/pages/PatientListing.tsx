@@ -217,8 +217,9 @@ export default function PatientListing() {
 
   return (
     <div className="space-y-4">
-      {isOfflineMode && (
-        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-center justify-between shadow-sm animate-pulse">
+      <div className="print:hidden space-y-4">
+        {isOfflineMode && (
+          <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-center justify-between shadow-sm animate-pulse">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 bg-amber-500 rounded-full inline-block animate-ping" />
             <span>
@@ -557,6 +558,7 @@ export default function PatientListing() {
           </div>
         </div>
       )}
+      </div>
 
       {/* PRINT-ONLY EXCEL-LIKE SPREADSHEET CONTAINER */}
       <div className="hidden print:block w-full bg-white text-slate-950 p-6 min-h-screen">
@@ -581,6 +583,7 @@ export default function PatientListing() {
             <tr>
               <th className="w-12">#</th>
               <th>{t("patientName") || "Patient Name"}</th>
+              <th>{language === 'fr' ? "Date Enregistrement" : "Registration Date"}</th>
               <th>{language === 'fr' ? "Genre" : "Gender"}</th>
               <th>{language === 'fr' ? "Né(e) Le" : "Date of Birth"}</th>
               <th>{language === 'fr' ? "Téléphone" : "Phone"}</th>
@@ -592,6 +595,17 @@ export default function PatientListing() {
               <tr key={p.id}>
                 <td className="font-mono text-[10px]">{idx + 1}</td>
                 <td className="font-bold">{p.firstName} {p.lastName}</td>
+                <td className="font-mono text-[10px]">
+                  {p.createdAt ? (
+                    typeof p.createdAt === 'string' 
+                      ? new Date(p.createdAt).toLocaleDateString() 
+                      : p.createdAt.seconds 
+                      ? new Date(p.createdAt.seconds * 1000).toLocaleDateString()
+                      : p.createdAt.toDate 
+                      ? p.createdAt.toDate().toLocaleDateString()
+                      : "—"
+                  ) : "—"}
+                </td>
                 <td className="uppercase">{t(p.gender?.toUpperCase() || 'OTHER')}</td>
                 <td>{p.dateOfBirth || "—"}</td>
                 <td className="font-mono">{p.phone || "—"}</td>

@@ -162,7 +162,8 @@ export default function Inventory() {
         unit: newItem.unit,
         minStock: 5,
         imageUrl: "",
-        hospitalId
+        hospitalId,
+        createdAt: serverTimestamp()
       });
       setShowAddModal(false);
       setNewItem({ name: "", type: isPharmacie ? "MEDICINE" : "EQUIPMENT", stock: 0, unit: "units", minStock: 5, imageUrl: "" });
@@ -191,7 +192,8 @@ export default function Inventory() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <div className="print:hidden space-y-6 sm:space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-4xl font-serif italic font-bold tracking-tight mb-2 uppercase">{t("inventory")}</h1>
           <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">SUPPLY_CHAIN / ASSET_TRACKING</p>
@@ -480,6 +482,7 @@ export default function Inventory() {
           </div>
         </div>
       )}
+      </div>
 
       {/* PRINT-ONLY EXCEL-LIKE SPREADSHEET CONTAINER */}
       <div className="hidden print:block w-full bg-white text-slate-950 p-6 min-h-screen">
@@ -504,6 +507,7 @@ export default function Inventory() {
             <tr>
               <th className="w-12">#</th>
               <th>{language === 'fr' ? "Nom de l'Article" : "Item Name"}</th>
+              <th>{language === 'fr' ? "Date" : "Date"}</th>
               <th>{language === 'fr' ? "Catégorie / Type" : "Category / Type"}</th>
               <th>{t("stockLevel") || "Stock level"}</th>
               <th>{language === 'fr' ? "Statut" : "Status"}</th>
@@ -515,6 +519,17 @@ export default function Inventory() {
               <tr key={item.id}>
                 <td className="font-mono text-[10px]">{idx + 1}</td>
                 <td className="font-bold">{item.name}</td>
+                <td className="font-mono text-[10px]">
+                  {item.createdAt ? (
+                    typeof item.createdAt === 'string' 
+                      ? new Date(item.createdAt).toLocaleDateString() 
+                      : item.createdAt.seconds 
+                      ? new Date(item.createdAt.seconds * 1000).toLocaleDateString()
+                      : item.createdAt.toDate 
+                      ? item.createdAt.toDate().toLocaleDateString()
+                      : "—"
+                  ) : "—"}
+                </td>
                 <td className="uppercase font-mono text-[10px]">{t(item.type.toLowerCase())}</td>
                 <td className="font-mono font-bold">
                   {item.stock} <span className="text-[10px] uppercase">{item.unit || "units"}</span>

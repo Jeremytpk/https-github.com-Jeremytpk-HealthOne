@@ -47,17 +47,14 @@ body {
 
 /* @media print custom rules */
 @media print {
-  body, html {
+  html, body, #root, #root > div {
     background-color: white !important;
     background: white !important;
     color: black !important;
     height: auto !important;
+    min-height: 0 !important;
     overflow: visible !important;
-  }
-  
-  /* Hide all generic interaction UI */
-  nav, header, aside, button, .no-print, input, select, .modal, .toast, [role="button"], a {
-    display: none !important;
+    position: static !important;
   }
   
   /* Reset container layout on print */
@@ -66,6 +63,18 @@ body {
     margin: 0 !important;
     background: transparent !important;
     overflow: visible !important;
+    position: static !important;
+  }
+
+  /* Strip borders, shadows, and flex-lock heights from nested wrappers */
+  div {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  
+  /* Hide all generic interaction UI */
+  nav, header, aside, footer, button, .no-print, input, select, .modal, .toast, [role="button"], a {
+    display: none !important;
   }
 
   .print\:hidden {
