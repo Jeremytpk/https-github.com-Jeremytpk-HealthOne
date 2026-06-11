@@ -68,8 +68,118 @@ export default function PatientDetails() {
     }
     return t("recentlyAdded") || "Recently Added";
   };
+
+  const formatRegisterDate = (createdAt: any) => {
+    if (!createdAt) return "—";
+    let d: Date | null = null;
+    if (typeof createdAt.toDate === 'function') {
+      d = createdAt.toDate();
+    } else if (createdAt.seconds) {
+      d = new Date(createdAt.seconds * 1000);
+    } else if (createdAt instanceof Date) {
+      d = createdAt;
+    } else {
+      try {
+        d = new Date(createdAt);
+      } catch (e) {
+        return "—";
+      }
+    }
+    if (!d || isNaN(d.getTime())) return "—";
+    
+    if (language === 'fr') {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+    } else {
+      return d.toLocaleDateString('en-US');
+    }
+  };
+
+  const formatBirthDate = (dob: string) => {
+    if (!dob) return "—";
+    const parts = dob.split("-");
+    if (parts.length === 3 && parts[0].length === 4) {
+      if (language === 'fr') {
+        const [year, month, day] = parts;
+        return `${day}-${month}-${year}`;
+      }
+      return dob;
+    }
+    const frParts = dob.split("-");
+    if (frParts.length === 3 && frParts[2].length === 4) {
+      if (language === 'fr') {
+        return dob;
+      }
+      const [day, month, year] = frParts;
+      return `${year}-${month}-${day}`;
+    }
+    
+    try {
+      const d = new Date(dob);
+      if (isNaN(d.getTime())) return dob;
+      if (language === 'fr') {
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+      }
+    } catch (e) {}
+    return dob;
+  };
   
   // New Case/Note state
+  const [showAddPaymentForm, setShowAddPaymentForm] = useState(false);
+  const [newPayAmount, setNewPayAmount] = useState("");
+  const [newPayCurrency, setNewPayCurrency] = useState("USD");
+  const [newPayMethod, setNewPayMethod] = useState("CASH");
+
+  const handleAddNewCasePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCase || !id) return;
+    const amtVal = Number(newPayAmount) || 0;
+    if (amtVal <= 0) return;
+    
+    try {
+      const resolvedHospitalId = hospitalId || patient?.hospitalId || profile?.hospitalId || "";
+      const paymentPayload = {
+        patientId: id,
+        patientName: patient ? `${patient.firstName} ${patient.lastName}` : "Patient",
+        amount: amtVal,
+        currency: newPayCurrency,
+        method: newPayMethod,
+        status: "PAID",
+        reference: `CASE_PAY_${selectedCase.id.slice(-5).toUpperCase()}_${Date.now().toString().slice(-4)}`,
+        caseId: selectedCase.id,
+        department: patient?.department || "General Medicine",
+        hospitalId: resolvedHospitalId,
+        cashierId: profile?.id || "Staff",
+        cashierName: profile?.fullName || profile?.name || "Staff",
+        createdAt: isOfflineMode ? new Date().toISOString() : serverTimestamp()
+      };
+
+      const formattedAmt = (newPayCurrency === "FC" || newPayCurrency === "CDF") ? `${amtVal} FC` : `$${amtVal} USD`;
+      if (isOfflineMode) {
+        await addOfflineDoc(
+          "payments",
+          paymentPayload,
+          `Payment: ${formattedAmt} for ${paymentPayload.patientName}`
+        );
+      } else {
+        await addDoc(collection(db, "payments"), paymentPayload);
+      }
+      
+      setNewPayAmount("");
+      setNewPayCurrency("USD");
+      setNewPayMethod("CASH");
+      setShowAddPaymentForm(false);
+      fetchPatientPayments();
+    } catch (err) {
+      console.error("Failed to add payment to selected case:", err);
+    }
+  };
+
   const [showCaseModal, setShowCaseModal] = useState(false);
   const [caseError, setCaseError] = useState<string | null>(null);
   const [newNote, setNewNote] = useState("");
@@ -569,9 +679,10 @@ export default function PatientDetails() {
               )}
             </h1>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-[10px] font-mono opacity-50 uppercase tracking-widest">
-              <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {t("birthDate").toUpperCase()}: {patient.dateOfBirth}</span>
+              <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {t("birthDate").toUpperCase()}: {formatBirthDate(patient.dateOfBirth)}</span>
               <span className="flex items-center gap-1"><User className="w-3 h-3" /> {t(patient.gender?.toUpperCase() || 'OTHER')}</span>
               <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {patient.phone || t("NO_PHONE")}</span>
+              <span className="flex items-center gap-1 font-bold text-slate-800"><Clock className="w-3 h-3" /> {language === 'fr' ? "Enregistré le" : "Registered"}: {formatRegisterDate(patient.createdAt)}</span>
             </div>
           </div>
         </div>
@@ -828,6 +939,88 @@ export default function PatientDetails() {
                               </div>
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Add payment form for register and admin */}
+                      {showAddPaymentForm ? (
+                        <form onSubmit={handleAddNewCasePayment} className="mt-4 pt-4 border-t border-emerald-100/60 space-y-3">
+                          <h5 className="text-[10px] uppercase font-mono font-bold text-slate-500 tracking-wider">
+                            {language === 'fr' ? "Nouveau paiement" : "New Payment"}
+                          </h5>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[9px] font-mono opacity-50 uppercase tracking-widest mb-1">
+                                {language === 'fr' ? "Montant" : "Amount"}
+                              </label>
+                              <input
+                                type="number"
+                                required
+                                min="1"
+                                value={newPayAmount}
+                                onChange={(e) => setNewPayAmount(e.target.value)}
+                                placeholder="0"
+                                className="w-full bg-white border border-emerald-200 px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[9px] font-mono opacity-50 uppercase tracking-widest mb-1">
+                                {language === 'fr' ? "Devise" : "Currency"}
+                              </label>
+                              <select
+                                value={newPayCurrency}
+                                onChange={(e) => setNewPayCurrency(e.target.value)}
+                                className="w-full bg-white border border-emerald-200 px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              >
+                                <option value="USD">USD ($)</option>
+                                <option value="FC">FC (CDF)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[9px] font-mono opacity-50 uppercase tracking-widest mb-1">
+                                {language === 'fr' ? "Méthode" : "Method"}
+                              </label>
+                              <select
+                                value={newPayMethod}
+                                onChange={(e) => setNewPayMethod(e.target.value)}
+                                className="w-full bg-white border border-emerald-200 px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              >
+                                <option value="CASH">CASH</option>
+                                <option value="MOBILE_MONEY">MOBILE MONEY</option>
+                                <option value="BANK">BANK</option>
+                                <option value="OTHER">OTHER</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 text-xs pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowAddPaymentForm(false);
+                                setNewPayAmount("");
+                              }}
+                              className="px-3 py-1 font-mono uppercase text-[10px] text-slate-500 hover:text-slate-700 bg-slate-50 border border-slate-200 transition-colors"
+                            >
+                              {language === 'fr' ? "Annuler" : "Cancel"}
+                            </button>
+                            <button
+                              type="submit"
+                              className="px-3 py-1 font-mono uppercase text-[10px] text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                            >
+                              {language === 'fr' ? "Enregistrer" : "Save"}
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="mt-4 pt-2 border-t border-emerald-100/50 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setShowAddPaymentForm(true)}
+                            className="bg-emerald-600 text-white font-mono uppercase text-[10px] px-3 py-1.5 hover:bg-emerald-700 hover:shadow-sm active:scale-95 transition-all flex items-center gap-1"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            {language === 'fr' ? "Ajouter un paiement" : "Add Payment"}
+                          </button>
                         </div>
                       )}
                     </div>

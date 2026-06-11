@@ -215,6 +215,66 @@ export default function PatientListing() {
     p.phone?.includes(searchTerm)
   );
 
+  const formatPatientDate = (createdAt: any) => {
+    if (!createdAt) return "—";
+    let d: Date | null = null;
+    if (typeof createdAt.toDate === 'function') {
+      d = createdAt.toDate();
+    } else if (createdAt.seconds) {
+      d = new Date(createdAt.seconds * 1000);
+    } else if (createdAt instanceof Date) {
+      d = createdAt;
+    } else {
+      try {
+        d = new Date(createdAt);
+      } catch (e) {
+        return "—";
+      }
+    }
+    if (!d || isNaN(d.getTime())) return "—";
+    
+    if (language === 'fr') {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+    } else {
+      return d.toLocaleDateString('en-US');
+    }
+  };
+
+  const formatBirthDate = (dob: string) => {
+    if (!dob) return "—";
+    const parts = dob.split("-");
+    if (parts.length === 3 && parts[0].length === 4) {
+      if (language === 'fr') {
+        const [year, month, day] = parts;
+        return `${day}-${month}-${year}`;
+      }
+      return dob;
+    }
+    const frParts = dob.split("-");
+    if (frParts.length === 3 && frParts[2].length === 4) {
+      if (language === 'fr') {
+        return dob;
+      }
+      const [day, month, year] = frParts;
+      return `${year}-${month}-${day}`;
+    }
+    
+    try {
+      const d = new Date(dob);
+      if (isNaN(d.getTime())) return dob;
+      if (language === 'fr') {
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+      }
+    } catch (e) {}
+    return dob;
+  };
+
   return (
     <div className="space-y-4">
       <div className="print:hidden space-y-4">
@@ -286,19 +346,20 @@ export default function PatientListing() {
                 <th className="p-3 text-[10px] uppercase text-slate-400 font-bold">{t("patientName")}</th>
                 <th className="p-3 text-[10px] uppercase text-slate-400 font-bold hidden md:table-cell">{t("demographics")}</th>
                 <th className="p-3 text-[10px] uppercase text-slate-400 font-bold hidden sm:table-cell">{t("contact")}</th>
+                <th className="p-3 text-[10px] uppercase text-slate-400 font-bold hidden md:table-cell">{language === 'fr' ? "Date" : "Date"}</th>
                 <th className="p-3 pr-4 sm:pr-6 text-right text-[10px] uppercase text-slate-400 font-bold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="p-12 text-center text-xs font-bold text-slate-400 animate-pulse">
+                  <td colSpan={6} className="p-12 text-center text-xs font-bold text-slate-400 animate-pulse">
                     {t("syncingRecords").toUpperCase()}
                   </td>
                 </tr>
               ) : filteredPatients.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-12 text-center text-xs font-bold text-slate-400">
+                  <td colSpan={6} className="p-12 text-center text-xs font-bold text-slate-400">
                     {t("noRecordsFound")}
                   </td>
                 </tr>
@@ -333,7 +394,7 @@ export default function PatientListing() {
                      <td className="p-3 hidden md:table-cell">
                       <div className="flex flex-wrap gap-2">
                         <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-600 uppercase">
-                          {t(p.gender?.toUpperCase() || 'OTHER').charAt(0)} / {p.dateOfBirth}
+                          {t(p.gender?.toUpperCase() || 'OTHER').charAt(0)} / {formatBirthDate(p.dateOfBirth)}
                         </span>
                         {p.age && (
                           <span className="bg-blue-50 px-1.5 py-0.5 rounded text-[10px] font-bold text-blue-600">
@@ -349,6 +410,9 @@ export default function PatientListing() {
                     </td>
                     <td className="p-3 text-slate-500 font-mono text-[10px] uppercase hidden sm:table-cell">
                       {p.phone || t("NO_PHONE")}
+                    </td>
+                    <td className="p-3 text-slate-500 font-mono text-xs hidden md:table-cell whitespace-nowrap">
+                      {formatPatientDate(p.createdAt)}
                     </td>
                     <td className="p-3 pr-4 sm:pr-6 whitespace-nowrap">
                       <div className="flex justify-end items-center gap-2">
@@ -596,18 +660,10 @@ export default function PatientListing() {
                 <td className="font-mono text-[10px]">{idx + 1}</td>
                 <td className="font-bold">{p.firstName} {p.lastName}</td>
                 <td className="font-mono text-[10px]">
-                  {p.createdAt ? (
-                    typeof p.createdAt === 'string' 
-                      ? new Date(p.createdAt).toLocaleDateString() 
-                      : p.createdAt.seconds 
-                      ? new Date(p.createdAt.seconds * 1000).toLocaleDateString()
-                      : p.createdAt.toDate 
-                      ? p.createdAt.toDate().toLocaleDateString()
-                      : "—"
-                  ) : "—"}
+                  {formatPatientDate(p.createdAt)}
                 </td>
                 <td className="uppercase">{t(p.gender?.toUpperCase() || 'OTHER')}</td>
-                <td>{p.dateOfBirth || "—"}</td>
+                <td>{formatBirthDate(p.dateOfBirth)}</td>
                 <td className="font-mono">{p.phone || "—"}</td>
                 <td className="font-mono uppercase">{p.department || "GEN_MEDICINE"}</td>
               </tr>

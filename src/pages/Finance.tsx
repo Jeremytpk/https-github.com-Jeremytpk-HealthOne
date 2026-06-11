@@ -339,10 +339,25 @@ export default function Finance() {
   const getFormatDate = (createdAt: any) => {
     if (!createdAt) return t("justNow") || 'JUST_NOW';
     try {
+      let d: Date;
       if (typeof createdAt.toDate === 'function') {
-        return format(createdAt.toDate(), language === 'fr' ? 'dd/MM, HH:mm' : 'MMM dd, HH:mm');
+        d = createdAt.toDate();
+      } else if (createdAt.seconds) {
+        d = new Date(createdAt.seconds * 1000);
+      } else {
+        d = new Date(createdAt);
       }
-      return format(new Date(createdAt), language === 'fr' ? 'dd/MM, HH:mm' : 'MMM dd, HH:mm');
+
+      if (isNaN(d.getTime())) return t("justNow") || 'JUST_NOW';
+
+      if (language === 'fr') {
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+      } else {
+        return format(d, 'MMM dd, HH:mm');
+      }
     } catch (e) {
       return t("justNow") || 'JUST_NOW';
     }

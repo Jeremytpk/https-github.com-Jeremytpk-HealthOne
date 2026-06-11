@@ -47,6 +47,34 @@ export default function Inventory() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const formatInventoryDate = (createdAt: any) => {
+    if (!createdAt) return "—";
+    let d: Date | null = null;
+    if (typeof createdAt.toDate === 'function') {
+      d = createdAt.toDate();
+    } else if (createdAt.seconds) {
+      d = new Date(createdAt.seconds * 1000);
+    } else if (createdAt instanceof Date) {
+      d = createdAt;
+    } else {
+      try {
+        d = new Date(createdAt);
+      } catch (e) {
+        return "—";
+      }
+    }
+    if (!d || isNaN(d.getTime())) return "—";
+    
+    if (language === 'fr') {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+    } else {
+      return d.toLocaleDateString('en-US');
+    }
+  };
+
   const openAddModal = () => {
     setFormError(null);
     setShowAddModal(true);
@@ -277,9 +305,12 @@ export default function Inventory() {
 
             <div className="p-5 flex-1">
               <div className="mb-4">
-                <div className="flex items-center gap-2 text-xs font-mono opacity-50 uppercase tracking-wider mb-1">
-                  {item.type === 'MEDICINE' ? <Pill className="w-3 h-3" /> : <Package className="w-3 h-3" />}
-                  {t(item.type.toLowerCase())}
+                <div className="flex items-center justify-between text-xs font-mono opacity-50 uppercase tracking-wider mb-1">
+                  <div className="flex items-center gap-1.5">
+                    {item.type === 'MEDICINE' ? <Pill className="w-3 h-3" /> : <Package className="w-3 h-3" />}
+                    {t(item.type.toLowerCase())}
+                  </div>
+                  <span className="text-[10px] tracking-tight">{formatInventoryDate(item.createdAt)}</span>
                 </div>
                 <h3 className="font-bold text-lg leading-tight uppercase truncate">{item.name}</h3>
               </div>
@@ -520,15 +551,7 @@ export default function Inventory() {
                 <td className="font-mono text-[10px]">{idx + 1}</td>
                 <td className="font-bold">{item.name}</td>
                 <td className="font-mono text-[10px]">
-                  {item.createdAt ? (
-                    typeof item.createdAt === 'string' 
-                      ? new Date(item.createdAt).toLocaleDateString() 
-                      : item.createdAt.seconds 
-                      ? new Date(item.createdAt.seconds * 1000).toLocaleDateString()
-                      : item.createdAt.toDate 
-                      ? item.createdAt.toDate().toLocaleDateString()
-                      : "—"
-                  ) : "—"}
+                  {formatInventoryDate(item.createdAt)}
                 </td>
                 <td className="uppercase font-mono text-[10px]">{t(item.type.toLowerCase())}</td>
                 <td className="font-mono font-bold">
