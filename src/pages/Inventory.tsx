@@ -29,7 +29,9 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   X as CloseIcon,
-  Printer
+  Printer,
+  LayoutGrid,
+  List
 } from "lucide-react";
 
 export default function Inventory() {
@@ -39,6 +41,7 @@ export default function Inventory() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<"ALL" | "EQUIPMENT" | "MEDICINE">("ALL");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState<any>(null);
@@ -279,90 +282,229 @@ export default function Inventory() {
             ))}
           </div>
         )}
+        <div className="flex bg-white border border-app-line p-1 w-full lg:w-auto overflow-x-auto no-scrollbar shrink-0 gap-1">
+          <button
+            onClick={() => setViewMode("grid")}
+            className={`p-2 transition-all cursor-pointer ${
+              viewMode === "grid" ? "bg-slate-900 text-white" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+            }`}
+            title="Grid View"
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setViewMode("list")}
+            className={`p-2 transition-all cursor-pointer ${
+              viewMode === "list" ? "bg-slate-900 text-white" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+            }`}
+            title="List View"
+          >
+            <List className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      {/* Inventory Grid */}
+      {/* Inventory Grid or List */}
       {filteredItems.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          {filteredItems.map((item) => (
-            <div key={item.id} className="bg-white border border-app-line relative group overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-shadow">
-               {item.stock <= item.minStock && (
-                 <div className="absolute top-0 right-0 p-2 text-orange-600 bg-orange-50 border-l border-b border-app-line z-10 animate-pulse">
-                    <AlertTriangle className="w-4 h-4" />
-                 </div>
-               )}
+        viewMode === "grid" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            {filteredItems.map((item) => (
+              <div key={item.id} className="bg-white border border-app-line relative group overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-shadow">
+                 {item.stock <= item.minStock && (
+                   <div className="absolute top-0 right-0 p-2 text-orange-600 bg-orange-50 border-l border-b border-app-line z-10 animate-pulse">
+                      <AlertTriangle className="w-4 h-4" />
+                   </div>
+                 )}
 
-            <button 
-              onClick={() => deleteItem(item.id)}
-              className="absolute top-0 left-0 p-2 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-white/80 hover:text-red-600"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-
-            {item.imageUrl && (
-              <div className="h-32 w-full overflow-hidden border-b border-app-line">
-                <img 
-                  src={item.imageUrl} 
-                  alt={item.name} 
-                  className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-            )}
-
-            <div className="p-5 flex-1">
-              <div className="mb-4">
-                <div className="flex items-center justify-between text-xs font-mono opacity-50 uppercase tracking-wider mb-1">
-                  <div className="flex items-center gap-1.5">
-                    {item.type === 'MEDICINE' ? <Pill className="w-3 h-3" /> : <Package className="w-3 h-3" />}
-                    {t(item.type.toLowerCase())}
-                  </div>
-                  <span className="text-[10px] tracking-tight">{formatInventoryDate(item.createdAt)}</span>
-                </div>
-                <h3 className="font-bold text-lg leading-tight uppercase truncate">{item.name}</h3>
-              </div>
-
-              <div className="flex items-end justify-between mb-6">
-                <div>
-                  <p className="col-header">{t("stockLevel")}</p>
-                  <p className={`text-2xl font-mono font-bold tracking-tighter ${item.stock <= item.minStock ? 'text-red-600' : ''}`}>
-                    {item.stock} <span className="text-[10px] opacity-40 font-normal uppercase tracking-normal">{item.unit}</span>
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="col-header">{t("minThreshold")}</p>
-                  <p className="text-xs font-mono opacity-50">{item.minStock}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 border-t border-slate-200 pt-4 mt-auto">
-                <button 
-                  onClick={() => adjustStock(item.id, -1)}
-                  disabled={item.stock <= 0}
-                  className="flex-1 h-9 border border-slate-200 flex items-center justify-center gap-2 text-[10px] font-mono uppercase hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-30"
-                  title="Take from inventory"
-                >
-                  <Minus className="w-3 h-3" /> {t("take")}
-                </button>
-                <button 
-                  onClick={() => adjustStock(item.id, 1)}
-                  className="flex-1 h-9 bg-slate-900 text-white flex items-center justify-center gap-2 text-[10px] font-mono uppercase hover:bg-slate-800 transition-colors"
-                  title="Restock inventory"
-                >
-                  <Plus className="w-3 h-3" /> {t("restock")}
-                </button>
-              </div>
-              
               <button 
-                onClick={() => fetchHistory(item.id)}
-                className="mt-3 w-full text-center text-[9px] font-mono opacity-30 uppercase hover:opacity-100 transition-opacity flex items-center justify-center gap-1"
+                onClick={() => deleteItem(item.id)}
+                className="absolute top-0 left-0 p-2 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-white/80 hover:text-red-600"
               >
-                <History className="w-3 h-3" /> {t("viewTransactionLog")}
+                <Trash2 className="w-4 h-4" />
               </button>
+
+              {item.imageUrl && (
+                <div className="h-32 w-full overflow-hidden border-b border-app-line">
+                  <img 
+                    src={item.imageUrl} 
+                    alt={item.name} 
+                    className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              )}
+
+              <div className="p-5 flex-1">
+                <div className="mb-4">
+                  <div className="flex items-center justify-between text-xs font-mono opacity-50 uppercase tracking-wider mb-1">
+                    <div className="flex items-center gap-1.5">
+                      {item.type === 'MEDICINE' ? <Pill className="w-3 h-3" /> : <Package className="w-3 h-3" />}
+                      {t(item.type.toLowerCase())}
+                    </div>
+                    <span className="text-[10px] tracking-tight">{formatInventoryDate(item.createdAt)}</span>
+                  </div>
+                  <h3 className="font-bold text-lg leading-tight uppercase truncate">{item.name}</h3>
+                </div>
+
+                <div className="flex items-end justify-between mb-6">
+                  <div>
+                    <p className="col-header">{t("stockLevel")}</p>
+                    <p className={`text-2xl font-mono font-bold tracking-tighter ${item.stock <= item.minStock ? 'text-red-600' : ''}`}>
+                      {item.stock} <span className="text-[10px] opacity-40 font-normal uppercase tracking-normal">{item.unit}</span>
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="col-header">{t("minThreshold")}</p>
+                    <p className="text-xs font-mono opacity-50">{item.minStock}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 border-t border-slate-200 pt-4 mt-auto">
+                  <button 
+                    onClick={() => adjustStock(item.id, -1)}
+                    disabled={item.stock <= 0}
+                    className="flex-1 h-9 border border-slate-200 flex items-center justify-center gap-2 text-[10px] font-mono uppercase hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-30"
+                    title="Take from inventory"
+                  >
+                    <Minus className="w-3 h-3" /> {t("take")}
+                  </button>
+                  <button 
+                    onClick={() => adjustStock(item.id, 1)}
+                    className="flex-1 h-9 bg-slate-900 text-white flex items-center justify-center gap-2 text-[10px] font-mono uppercase hover:bg-slate-800 transition-colors"
+                    title="Restock inventory"
+                  >
+                    <Plus className="w-3 h-3" /> {t("restock")}
+                  </button>
+                </div>
+                
+                <button 
+                  onClick={() => fetchHistory(item.id)}
+                  className="mt-3 w-full text-center text-[9px] font-mono opacity-30 uppercase hover:opacity-100 transition-opacity flex items-center justify-center gap-1"
+                >
+                  <History className="w-3 h-3" /> {t("viewTransactionLog")}
+                </button>
+              </div>
+            </div>
+          ))}
+          </div>
+        ) : (
+          <div className="bg-white border border-app-line overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-app-line bg-slate-50 text-[10px] uppercase font-mono tracking-wider text-slate-500">
+                    <th className="p-4 font-bold">{language === 'fr' ? "Article" : "Item"}</th>
+                    <th className="p-4 font-bold">{language === 'fr' ? "Catégorie" : "Category"}</th>
+                    <th className="p-4 font-bold">{language === 'fr' ? "Niveau de Stock" : "Stock Level"}</th>
+                    <th className="p-4 font-bold">{language === 'fr' ? "Ajustement Rapide" : "Quick Adjust"}</th>
+                    <th className="p-4 font-bold">{language === 'fr' ? "Historique" : "History"}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-app-line text-xs">
+                  {filteredItems.map((item) => {
+                    const isLowStock = item.stock <= item.minStock;
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/70 transition-colors group">
+                        {/* ITEM name & optional image & delete */}
+                        <td className="p-4 align-middle">
+                          <div className="flex items-center gap-3">
+                            <button 
+                              onClick={() => deleteItem(item.id)}
+                              className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-650 cursor-pointer"
+                              title={language === 'fr' ? "Supprimer l'article" : "Delete item"}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                            {item.imageUrl && (
+                              <div className="w-10 h-10 overflow-hidden border border-app-line shrink-0 hidden sm:block">
+                                <img 
+                                  src={item.imageUrl} 
+                                  alt={item.name} 
+                                  className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-300"
+                                  referrerPolicy="no-referrer"
+                                />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-slate-800 uppercase truncate max-w-[150px] sm:max-w-xs">{item.name}</span>
+                                {isLowStock && (
+                                  <span className="text-[8px] font-mono text-rose-705 bg-rose-50 border border-rose-200 px-1.5 py-0.5 uppercase tracking-wider font-bold shrink-0 animate-pulse flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    {language === 'fr' ? "STOCK BAS" : "LOW STOCK"}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[9px] font-mono opacity-40 block sm:hidden">
+                                {item.type === 'MEDICINE' ? t("medicine") : t("equipment")} • {formatInventoryDate(item.createdAt)}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* CATEGORY */}
+                        <td className="p-4 align-middle hidden sm:table-cell">
+                          <div className="flex items-center gap-1.5 text-xs font-mono opacity-60 uppercase tracking-wider">
+                            {item.type === 'MEDICINE' ? <Pill className="w-3.5 h-3.5" /> : <Package className="w-3.5 h-3.5" />}
+                            {t(item.type.toLowerCase())}
+                          </div>
+                          <span className="text-[9px] font-mono opacity-40 block mt-0.5">{formatInventoryDate(item.createdAt)}</span>
+                        </td>
+
+                        {/* STOCK */}
+                        <td className="p-4 align-middle">
+                          <div className="font-mono">
+                            <span className={`text-sm font-bold ${isLowStock ? 'text-rose-600' : 'text-slate-850'}`}>
+                              {item.stock}
+                            </span>
+                            <span className="text-[10px] opacity-40 font-normal uppercase ml-1">{item.unit}</span>
+                          </div>
+                          <div className="text-[9px] font-mono opacity-40">
+                            {language === 'fr' ? `Seuil Min: ${item.minStock}` : `Min Thresh: ${item.minStock}`}
+                          </div>
+                        </td>
+
+                        {/* QUICK ADJUST */}
+                        <td className="p-4 align-middle">
+                          <div className="flex items-center gap-1">
+                            <button 
+                              onClick={() => adjustStock(item.id, -1)}
+                              disabled={item.stock <= 0}
+                              className="h-8 border border-slate-205 flex items-center justify-center gap-1 text-[10px] font-mono uppercase bg-white hover:bg-rose-50 hover:text-rose-600 px-2.5 transition-colors disabled:opacity-30 cursor-pointer select-none"
+                              title="Take from inventory"
+                            >
+                              <Minus className="w-3 h-3" />
+                              <span className="hidden md:inline">{t("take")}</span>
+                            </button>
+                            <button 
+                              onClick={() => adjustStock(item.id, 1)}
+                              className="h-8 bg-slate-900 text-white flex items-center justify-center gap-1 text-[10px] font-mono uppercase hover:bg-slate-800 px-2.5 transition-colors cursor-pointer select-none"
+                              title="Restock inventory"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span className="hidden md:inline">{t("restock")}</span>
+                            </button>
+                          </div>
+                        </td>
+
+                        {/* ACTIONS (History) */}
+                        <td className="p-4 align-middle">
+                          <button 
+                            onClick={() => fetchHistory(item.id)}
+                            className="text-slate-500 hover:text-indigo-600 font-mono text-[9px] font-bold uppercase transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                            <span>{language === 'fr' ? "JOURNAL" : "LOGS"}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
-        ))}
-      </div>
+        )
       ) : (
         <div className="py-20 text-center border-2 border-dashed border-slate-200 bg-white">
           <div className="max-w-xs mx-auto">
