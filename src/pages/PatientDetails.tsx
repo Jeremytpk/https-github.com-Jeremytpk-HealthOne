@@ -36,7 +36,8 @@ import {
   Pill,
   Pencil,
   Trash2,
-  Receipt
+  Receipt,
+  Printer
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { format } from "date-fns";
@@ -45,13 +46,14 @@ export default function PatientDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { hospitalId, profile } = useAuth();
-  const { t, language } = useLanguage();
+  const { t, language, hideFinance } = useLanguage();
   const { isOfflineMode, addOfflineDoc, getQueuedItemsForCollection } = useOfflineSync();
   
   const [patient, setPatient] = useState<any>(null);
   const [cases, setCases] = useState<any[]>([]);
   const [selectedCase, setSelectedCase] = useState<any>(null);
   const [notes, setNotes] = useState<any[]>([]);
+  const [allPatientNotes, setAllPatientNotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Helper to format case date to group/compare
@@ -470,24 +472,20 @@ export default function PatientDetails() {
   }, [id]);
 
   useEffect(() => {
-    if (!selectedCase) {
-      setNotes([]);
-      return;
-    }
+    if (!id) return;
 
-    const caseId = selectedCase.id;
     let unsubscribe = () => {};
 
-    if (!caseId.startsWith("offline_")) {
+    if (!id.startsWith("offline_")) {
       const q = query(
         collection(db, "evolution_notes"), 
-        where("caseId", "==", caseId)
+        where("patientId", "==", id)
       );
 
       unsubscribe = onSnapshot(q, (querySnapshot) => {
         const fetchedNotes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const offlineNotes = getQueuedItemsForCollection("evolution_notes")
-          .filter((item: any) => item.data.caseId === caseId)
+          .filter((item: any) => item.data.patientId === id)
           .map((item: any) => ({ id: item.id, ...item.data }));
 
         const mergedNotes = [...offlineNotes, ...fetchedNotes];
@@ -503,19 +501,28 @@ export default function PatientDetails() {
           return getMillis(b.createdAt) - getMillis(a.createdAt);
         });
 
-        setNotes(mergedNotes);
+        setAllPatientNotes(mergedNotes);
       }, (err) => {
-        console.error("Error fetching notes via onSnapshot: ", err);
+        console.error("Error fetching all notes via onSnapshot: ", err);
       });
     } else {
       const offlineNotes = getQueuedItemsForCollection("evolution_notes")
-        .filter((item: any) => item.data.caseId === caseId)
+        .filter((item: any) => item.data.patientId === id)
         .map((item: any) => ({ id: item.id, ...item.data }));
-      setNotes(offlineNotes);
+      setAllPatientNotes(offlineNotes);
     }
 
     return () => unsubscribe();
-  }, [selectedCase?.id]);
+  }, [id]);
+
+  useEffect(() => {
+    if (!selectedCase) {
+      setNotes([]);
+      return;
+    }
+    const filteredNotes = allPatientNotes.filter(n => n.caseId === selectedCase.id);
+    setNotes(filteredNotes);
+  }, [selectedCase?.id, allPatientNotes]);
 
   // Compatibility stubs for state refetches
   const fetchPatient = async () => {};
@@ -812,7 +819,8 @@ export default function PatientDetails() {
   if (!patient) return <div>Patient not found.</div>;
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6 print:hidden">
       {/* Header with Back */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-app-line pb-6 w-full">
         <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1">
@@ -841,6 +849,13 @@ export default function PatientDetails() {
         </div>
         
         <div className="flex flex-wrap items-center gap-2 sm:self-center shrink-0">
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 h-9 px-4 text-[10px] font-mono border border-emerald-200 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-300 uppercase tracking-wider font-bold transition-all shadow-none shrink-0"
+            title={language === 'fr' ? "Imprimer le dossier médical" : "Print Medical Record"}
+          >
+            <Printer className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> {language === 'fr' ? "IMPRIMER DOSSIER" : "PRINT RECORD"}
+          </button>
           {canEditPatient && (
             <button
               onClick={handleOpenEditPatient}
@@ -1067,14 +1082,20 @@ export default function PatientDetails() {
                               {language === 'fr' ? "Solde Payé :" : "Total Sum Paid:"}
                             </span>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 font-bold">
-                              {usdSum > 0 && (
-                                <span className="text-slate-800">${usdSum.toLocaleString()} USD</span>
-                              )}
-                              {fcSum > 0 && (
-                                <span className="text-emerald-700">{fcSum.toLocaleString()} FC</span>
-                              )}
-                              {usdSum === 0 && fcSum === 0 && (
-                                <span className="text-slate-400">0.00</span>
+                              {hideFinance ? (
+                                <span className="text-slate-800">••••</span>
+                              ) : (
+                                <>
+                                  {usdSum > 0 && (
+                                    <span className="text-slate-800">${usdSum.toLocaleString()} USD</span>
+                                  )}
+                                  {fcSum > 0 && (
+                                    <span className="text-emerald-700">{fcSum.toLocaleString()} FC</span>
+                                  )}
+                                  {usdSum === 0 && fcSum === 0 && (
+                                    <span className="text-slate-400">0.00</span>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
@@ -1087,7 +1108,7 @@ export default function PatientDetails() {
                                   <span className="text-slate-600 font-bold truncate">{p.method || 'CASH'} • {p.cashierName || 'Staff'}</span>
                                 </div>
                                 <span className="font-bold text-emerald-600 shrink-0">
-                                  {p.currency === "FC" || p.currency === "CDF" || p.currency === "CFC" ? `${Number(p.amount).toLocaleString()} FC` : `$${Number(p.amount).toLocaleString()} USD`}
+                                  {hideFinance ? "••••" : (p.currency === "FC" || p.currency === "CDF" || p.currency === "CFC" ? `${Number(p.amount).toLocaleString()} FC` : `$${Number(p.amount).toLocaleString()} USD`)}
                                 </span>
                               </div>
                             ))}
@@ -1860,5 +1881,202 @@ export default function PatientDetails() {
         </div>
       )}
     </div>
-  );
+
+    {/* Printable Clinical Dossier / Patient Record */}
+    <div className="hidden print:block w-full bg-white text-slate-950 p-8 font-sans">
+      {/* Header Block */}
+      <div className="flex justify-between items-start border-b-2 border-slate-950 pb-5 mb-8">
+        <div>
+          <h1 className="text-2xl font-bold font-mono tracking-tight uppercase leading-none text-slate-950">HealthOne Hospital Network</h1>
+          <p className="text-sm font-mono uppercase tracking-widest text-slate-800 font-bold mt-2 font-mono">
+            {profile?.hospital?.name || profile?.hospitalName || (typeof profile?.hospital === 'string' ? profile.hospital : "General Hospital Component")}
+          </p>
+          <p className="text-[10px] font-mono mt-1 text-slate-600 font-bold uppercase tracking-wider">
+            {language === 'fr' ? "DOSSIER MEDICAL COMPLET DU PATIENT" : "PATIENT COMPREHENSIVE CLINICAL RECORD"}
+          </p>
+        </div>
+        <div className="text-right text-xs font-mono text-slate-950">
+          <p className="font-bold">
+            {language === 'fr' 
+              ? (() => {
+                  const d = new Date();
+                  const day = String(d.getDate()).padStart(2, '0');
+                  const month = String(d.getMonth() + 1).padStart(2, '0');
+                  const year = d.getFullYear();
+                  return `IMPRIME LE : ${day}-${month}-${year}`;
+                })()
+              : `PRINTED: ${new Date().toLocaleDateString('en-US')}`
+            }
+          </p>
+          <p className="text-slate-600 mt-1 font-bold">ID: {patient.id.toUpperCase()}</p>
+        </div>
+      </div>
+
+      {/* Section 1: Patient Demographics */}
+      <div className="mb-8 bg-slate-50 border border-slate-950 p-6">
+        <h2 className="text-xs font-mono font-bold uppercase tracking-widest border-b border-slate-900 pb-2 mb-4 text-slate-900">
+          {language === 'fr' ? "I. INFORMATIONS GENERALES DU PATIENT" : "I. PATIENT GENERAL DEMOGRAPHICS"}
+        </h2>
+        <div className="grid grid-cols-2 gap-y-4 gap-x-8 text-xs font-mono">
+          <div>
+            <span className="block text-slate-500 font-bold text-[9px] uppercase tracking-wider">{language === "fr" ? "NOM DU PATIENT" : "PATIENT FULL NAME"}</span>
+            <span className="text-sm font-bold/uppercase text-slate-950">{patient.firstName} {patient.lastName}</span>
+          </div>
+          <div>
+            <span className="block text-slate-500 font-bold text-[9px] uppercase tracking-wider">{language === "fr" ? "GENRE" : "GENDER / SEX"}</span>
+            <span className="text-sm font-bold uppercase text-slate-950">{t(patient.gender?.toUpperCase() || 'OTHER')}</span>
+          </div>
+          <div>
+            <span className="block text-slate-500 font-bold text-[9px] uppercase tracking-wider">{language === "fr" ? "DATE DE NAISSANCE (AGE)" : "DATE OF BIRTH (AGE)"}</span>
+            <span className="text-sm font-bold text-slate-950">{formatBirthDate(patient.dateOfBirth)} ({patient.age || "—"} {language === "fr" ? "ANS" : "YRS"})</span>
+          </div>
+          <div>
+            <span className="block text-slate-500 font-bold text-[9px] uppercase tracking-wider">{language === "fr" ? "TELEPHONE (CONTACT)" : "PHONE (CONTACT)"}</span>
+            <span className="text-sm font-bold text-slate-950">{patient.phone || "—"}</span>
+          </div>
+          <div>
+            <span className="block text-slate-500 font-bold text-[9px] uppercase tracking-wider">EMAIL</span>
+            <span className="text-sm font-bold text-slate-950">{patient.email || "—"}</span>
+          </div>
+          <div>
+            <span className="block text-slate-500 font-bold text-[9px] uppercase tracking-wider">{language === "fr" ? "DEPARTEMENT CLASSIFIE" : "CLASSIFIED DEPARTMENT"}</span>
+            <span className="text-sm font-bold uppercase text-slate-950">{patient.department || "GENERAL MEDICINE"}</span>
+          </div>
+          <div>
+            <span className="block text-slate-500 font-bold text-[9px] uppercase tracking-wider">{language === "fr" ? "DATE D'ENREGISTREMENT" : "REGISTRATION DATE"}</span>
+            <span className="text-sm font-bold text-slate-950">{formatRegisterDate(patient.createdAt)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Section 2: Medical Cases and Notes */}
+      <div className="mb-8">
+        <h2 className="text-xs font-mono font-bold uppercase tracking-widest border-b border-slate-900 pb-2 mb-6 text-slate-900">
+          {language === 'fr' ? "II. ANAMNESE ET HISTORIQUE DES CONSULTATIONS" : "II. CLINICAL HISTORY & CONSULTATION LOGS"}
+        </h2>
+        {cases.length === 0 ? (
+          <p className="text-xs italic text-slate-500 border border-dashed border-slate-400 p-4 font-mono text-center">
+            {language === "fr" ? "Aucun antécédent médical enregistré." : "No medical consultations or admissions recorded for this patient."}
+          </p>
+        ) : (
+          <div className="space-y-8">
+            {cases.map((c, idx) => {
+              const caseNotes = allPatientNotes.filter(n => n.caseId === c.id);
+              // Get payments for this case if allowed
+              const offlinePayments = getQueuedItemsForCollection("payments")
+                .filter((item: any) => item.data.patientId === id)
+                .map((item: any) => ({ id: item.id, ...item.data }));
+              const mergedPatientPayments = [...offlinePayments, ...patientPayments];
+              const casePayments = mergedPatientPayments.filter(p => p.caseId === c.id);
+              const usdSum = casePayments.filter(p => p.currency === "USD" || !p.currency).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+              const fcSum = casePayments.filter(p => p.currency === "FC" || p.currency === "CDF" || p.currency === "CFC").reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+              return (
+                <div key={c.id} className="border border-slate-950 p-5 bg-white break-inside-avoid">
+                  {/* Case Card Header */}
+                  <div className="flex justify-between items-start border-b border-slate-400 pb-2 mb-4">
+                    <div>
+                      <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+                        {language === "fr" ? `DOSSIER #${idx + 1}` : `DOSSIER #${idx + 1}`} (ID: {c.id.slice(-6).toUpperCase()})
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-950 font-mono uppercase">{c.title}</h3>
+                    </div>
+                    <div className="text-right text-[10px] font-mono">
+                      <span className="font-bold uppercase px-2 py-0.5 border border-slate-900 text-slate-950">
+                        {c.status || "OPEN"}
+                      </span>
+                      <p className="text-slate-500 font-bold mt-1.5">{formatRegisterDate(c.createdAt)}</p>
+                    </div>
+                  </div>
+
+                  {/* Metadata: Author */}
+                  <p className="text-[10px] font-mono uppercase text-slate-600 mb-3 font-semibold">
+                    {language === "fr" ? "PRATICIEN ASSIGNE" : "ATTENDING PROFESSIONAL"}: {c.authorName} ({c.authorRole})
+                  </p>
+
+                  {/* Description */}
+                  <div className="mb-4">
+                    <span className="block text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest">{language === "fr" ? "MOTIF D'ADMISSION & SYMPTOMES" : "ADMISSION REASON & SYMPTOMS"}</span>
+                    <p className="text-xs text-slate-900 leading-relaxed font-sans">{c.description}</p>
+                  </div>
+
+                  {/* Medicines */}
+                  {c.medicines && (
+                    <div className="mb-4 bg-slate-50 p-3 border border-slate-400">
+                      <span className="block text-[9px] font-mono font-bold text-slate-600 uppercase tracking-widest mb-1">{language === "fr" ? "ORDONNANCES & DIAGNOSTICS" : "PRESCRIPTIONS & DIAGNOSTICS"}</span>
+                      <p className="text-xs font-mono text-slate-900 whitespace-pre-wrap">{c.medicines}</p>
+                    </div>
+                  )}
+
+                  {/* Evolution Notes */}
+                  <div className="mb-4">
+                    <span className="block text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-2">{language === "fr" ? "NOTES D'EVOLUTION CLINIQUE" : "CLINICAL EVOLUTION LOGS"}</span>
+                    {caseNotes.length === 0 ? (
+                      <p className="text-[11px] italic text-slate-400 font-mono pl-3">
+                        — {language === "fr" ? "Aucune note consignée pour ce dossier." : "No patient evolution logs registered."}
+                      </p>
+                    ) : (
+                      <div className="space-y-3 font-mono text-[11px] pl-3 border-l-2 border-slate-400">
+                        {caseNotes.map((n) => (
+                          <div key={n.id} className="pb-2 border-b border-rose-100 last:border-b-0">
+                            <div className="flex justify-between font-bold text-slate-600 text-[10px] uppercase">
+                              <span>{n.authorName} ({n.authorRole})</span>
+                              <span>{formatRegisterDate(n.createdAt)}</span>
+                            </div>
+                            <p className="text-slate-900 mt-1 font-sans">{n.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Financial Summary */}
+                  {isFinancialAllowed && (
+                    <div className="mt-4 pt-3 border-t border-dashed border-slate-400 font-mono text-[11px]">
+                      <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">{language === "fr" ? "HISTORIQUE FINANCIER" : "FINANCIAL LOGS"}</span>
+                      {casePayments.length === 0 ? (
+                        <p className="italic text-slate-400 pl-3">
+                          — {language === "fr" ? "Aucun frais liquidé." : "No payments processed."}
+                        </p>
+                      ) : (
+                        <div className="pl-3 space-y-1">
+                          <div className="flex justify-between font-bold text-slate-800 border-b border-slate-200 pb-1 mb-1">
+                            <span>{language === "fr" ? "TOTAL ENCAISSE :" : "TOTAL LIQUIDATED :"}</span>
+                            <span>
+                              {hideFinance ? "••••" : (
+                                <>
+                                  {usdSum > 0 && `$${usdSum.toLocaleString()} USD `}
+                                  {fcSum > 0 && `${fcSum.toLocaleString()} FC`}
+                                  {usdSum === 0 && fcSum === 0 && "0.00"}
+                                </>
+                              )}
+                            </span>
+                          </div>
+                          {casePayments.map((p) => (
+                            <div key={p.id} className="flex justify-between text-slate-500 text-[10px]">
+                              <span>REF: {p.reference || "N/A"} ({p.method || "CASH"}) • {p.cashierName}</span>
+                              <span className="font-bold">
+                                {hideFinance ? "••••" : (p.currency === "FC" || p.currency === "CDF" || p.currency === "CFC" ? `${Number(p.amount).toLocaleString()} FC` : `$${Number(p.amount).toLocaleString()} USD`)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Print Disclaimer Footer */}
+      <div className="text-[10px] font-mono border-t-2 border-slate-900 pt-4 mt-12 text-center text-slate-600 uppercase tracking-wider flex justify-between">
+        <p>HealthOne Document Control Systems • confidential clinical file</p>
+        <p>{language === "fr" ? "Signature autorisée et cachet" : "Authorized signature & stamp"}</p>
+      </div>
+    </div>
+  </>
+);
 }

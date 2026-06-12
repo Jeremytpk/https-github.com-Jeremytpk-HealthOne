@@ -26,11 +26,26 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
   
   if (loading) return <LoadingPage />;
   if (!user) return <Navigate to="/login" />;
+  if (!profile) return <Navigate to="/login" />;
   
-  if (allowedRoles && profile) {
-    const userRole = getNormalizedRole(profile.role);
+  const userRole = getNormalizedRole(profile.role);
+  const isSuperAdmin = userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+  
+  // Check if account or tenant is suspended
+  const isSuspended = !isSuperAdmin && (profile.status === "SUSPENDED" || profile.hospital?.status === "SUSPENDED");
+  if (isSuspended) {
+    return <Navigate to="/login" />;
+  }
+  
+  // Check if account is validated and active
+  const isPending = !isSuperAdmin && profile.status !== "ACTIVE";
+  if (isPending) {
+    return <Navigate to="/login" />;
+  }
+  
+  if (allowedRoles) {
     // System Admin and Super Admin can bypass check and access all screens
-    if (userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN") {
+    if (isSuperAdmin) {
       return <>{children}</>;
     }
     if (!allowedRoles.includes(userRole)) {

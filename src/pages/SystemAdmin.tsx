@@ -120,7 +120,8 @@ export default function SystemAdmin() {
     name: "",
     address: "",
     email: "",
-    phone: ""
+    phone: "",
+    status: "ACTIVE"
   });
 
   useEffect(() => {
@@ -207,7 +208,8 @@ export default function SystemAdmin() {
                   address: "HealthOne Pre-configured Tenant (Ndjili Component)",
                   hospitalId: hName,
                   email: "",
-                  phone: ""
+                  phone: "",
+                  status: "ACTIVE"
                 });
               }
             });
@@ -228,7 +230,8 @@ export default function SystemAdmin() {
                     address: "HealthOne Pre-configured Tenant",
                     hospitalId: hName,
                     email: "",
-                    phone: ""
+                    phone: "",
+                    status: "ACTIVE"
                   });
                 }
               });
@@ -238,14 +241,16 @@ export default function SystemAdmin() {
 
           const rawData = docSnap.data();
           if (rawData && rawData.name) {
+            const existing = uniqueHospitalsMap.get(docSnap.id) || {};
             uniqueHospitalsMap.set(docSnap.id, {
               id: docSnap.id,
-              name: rawData.name,
-              address: rawData.address || "No Address Provided",
-              email: rawData.email || "",
-              contactEmail: rawData.contactEmail || "",
-              phone: rawData.phone || "",
-              hospitalId: rawData.hospitalId || docSnap.id
+              name: rawData.name || existing.name || docSnap.id,
+              address: rawData.address || existing.address || "No Address Provided",
+              email: rawData.email || existing.email || "",
+              contactEmail: rawData.contactEmail || rawData.email || existing.contactEmail || "",
+              phone: rawData.phone || existing.phone || "",
+              hospitalId: rawData.hospitalId || existing.hospitalId || docSnap.id,
+              status: rawData.status || existing.status || "ACTIVE"
             });
           }
         });
@@ -268,7 +273,8 @@ export default function SystemAdmin() {
                   address: "HealthOne Pre-configured Tenant",
                   hospitalId: hName,
                   email: "",
-                  phone: ""
+                  phone: "",
+                  status: "ACTIVE"
                 });
               }
             });
@@ -288,7 +294,8 @@ export default function SystemAdmin() {
                     address: "HealthOne Pre-configured Tenant",
                     hospitalId: hName,
                     email: "",
-                    phone: ""
+                    phone: "",
+                    status: "ACTIVE"
                   });
                 }
               });
@@ -297,14 +304,16 @@ export default function SystemAdmin() {
           }
 
           const rawData = docSnap.data();
-          if (rawData && rawData.name && !uniqueHospitalsMap.has(docSnap.id)) {
+          if (rawData && rawData.name) {
+            const existing = uniqueHospitalsMap.get(docSnap.id) || {};
             uniqueHospitalsMap.set(docSnap.id, {
               id: docSnap.id,
-              name: rawData.name,
-              address: rawData.address || "No Address Provided",
-              email: rawData.email || "",
-              phone: rawData.phone || "",
-              hospitalId: rawData.hospitalId || docSnap.id
+              name: rawData.name || existing.name || docSnap.id,
+              address: rawData.address || existing.address || "No Address Provided",
+              email: rawData.email || existing.email || "",
+              phone: rawData.phone || existing.phone || "",
+              hospitalId: rawData.hospitalId || existing.hospitalId || docSnap.id,
+              status: rawData.status || existing.status || "ACTIVE"
             });
           }
         });
@@ -314,14 +323,16 @@ export default function SystemAdmin() {
           const nestedSnap = await getDocs(collection(db, "healthone_hospitals", "healthone", "healthone"));
           nestedSnap.docs.forEach(docSnap => {
             const rawData = docSnap.data();
-            if (rawData && rawData.name && !uniqueHospitalsMap.has(docSnap.id)) {
+            if (rawData && rawData.name) {
+              const existing = uniqueHospitalsMap.get(docSnap.id) || {};
               uniqueHospitalsMap.set(docSnap.id, {
                 id: docSnap.id,
-                name: rawData.name,
-                address: rawData.address || "No Address Provided",
-                email: rawData.email || "",
-                phone: rawData.phone || "",
-                hospitalId: rawData.hospitalId || docSnap.id
+                name: rawData.name || existing.name || docSnap.id,
+                address: rawData.address || existing.address || "No Address Provided",
+                email: rawData.email || existing.email || "",
+                phone: rawData.phone || existing.phone || "",
+                hospitalId: rawData.hospitalId || existing.hospitalId || docSnap.id,
+                status: rawData.status || existing.status || "ACTIVE"
               });
             }
           });
@@ -336,15 +347,17 @@ export default function SystemAdmin() {
       try {
         const hSnap = await getDocs(collection(db, "hospitals"));
         hSnap.docs.forEach(docSnap => {
-          if (!uniqueHospitalsMap.has(docSnap.id)) {
-            const rawData = docSnap.data();
+          const rawData = docSnap.data();
+          if (rawData && rawData.name) {
+            const existing = uniqueHospitalsMap.get(docSnap.id) || {};
             uniqueHospitalsMap.set(docSnap.id, {
               id: docSnap.id,
-              name: rawData.name,
-              address: rawData.address || "No Address Provided",
-              email: rawData.email || "",
-              phone: rawData.phone || "",
-              hospitalId: rawData.hospitalId || docSnap.id
+              name: rawData.name || existing.name || docSnap.id,
+              address: rawData.address || existing.address || "No Address Provided",
+              email: rawData.email || existing.email || "",
+              phone: rawData.phone || existing.phone || "",
+              hospitalId: rawData.hospitalId || existing.hospitalId || docSnap.id,
+              status: rawData.status || existing.status || "ACTIVE"
             });
           }
         });
@@ -552,7 +565,8 @@ export default function SystemAdmin() {
       name: h.name || "",
       address: h.address || "",
       email: h.email || h.contactEmail || "",
-      phone: h.phone || ""
+      phone: h.phone || "",
+      status: h.status || "ACTIVE"
     });
   };
 
@@ -560,6 +574,8 @@ export default function SystemAdmin() {
     e.preventDefault();
     if (!selectedEditHospital) return;
     const hId = selectedEditHospital.id;
+    const previousStatus = selectedEditHospital.status || "ACTIVE";
+    const newStatus = editHospitalForm.status;
     try {
       const payload = {
         name: editHospitalForm.name.trim(),
@@ -567,6 +583,7 @@ export default function SystemAdmin() {
         email: editHospitalForm.email.trim(),
         contactEmail: editHospitalForm.email.trim(),
         phone: editHospitalForm.phone.trim(),
+        status: newStatus,
         updatedAt: serverTimestamp()
       };
 
@@ -575,9 +592,38 @@ export default function SystemAdmin() {
       await setDoc(doc(db, "healthone_hospitals", hId), { ...payload, hospitalId: hId }, { merge: true });
       await setDoc(doc(db, "healthone_hospitals", "healthone", "healthone", hId), { ...payload, hospitalId: hId }, { merge: true });
 
+      // Cascade update to users when status of tenant is changed
+      if (newStatus !== previousStatus) {
+        const userStatusToSet = newStatus === "SUSPENDED" ? "SUSPENDED" : "ACTIVE";
+        
+        // Query users collection having matching hospitalId
+        const usersRef = collection(db, "users");
+        const qSnapshot = await getDocs(usersRef);
+        const updatePromises: Promise<any>[] = [];
+        
+        qSnapshot.forEach((userDoc) => {
+          const userData = userDoc.data();
+          const userHospitalId = userData.hospitalId;
+          const userRole = getNormalizedRole(userData.role);
+          const isSuper = userRole === "SYSTEM_ADMIN" || userRole === "SUP_ADMIN";
+          
+          if (!isSuper && userHospitalId === hId) {
+            updatePromises.push(
+              updateDoc(doc(db, "users", userDoc.id), {
+                status: userStatusToSet
+              })
+            );
+          }
+        });
+        
+        if (updatePromises.length > 0) {
+          await Promise.all(updatePromises);
+        }
+      }
+
       alert(language === 'fr' 
-        ? "Informations de l'établissement mises à jour avec succès !" 
-        : "Hospital tenant details updated successfully!");
+        ? "Informations de l'établissement et comptes utilisateurs mis à jour avec succès !" 
+        : "Hospital tenant details and user accounts updated successfully!");
       setSelectedEditHospital(null);
       fetchHospitals();
     } catch (err: any) {
@@ -1668,7 +1714,16 @@ export default function SystemAdmin() {
                     title={language === 'fr' ? "Cliquez pour modifier les détails du tenant" : "Click to edit tenant details"}
                   >
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-bold uppercase tracking-tight truncate text-sm text-slate-800 group-hover:text-amber-700 transition-colors">{h.name}</h3>
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <h3 className="font-bold uppercase tracking-tight truncate text-sm text-slate-800 group-hover:text-amber-700 transition-colors">{h.name}</h3>
+                        <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 uppercase tracking-wide rounded ${
+                          h.status === "SUSPENDED" 
+                            ? "bg-rose-50 border border-rose-100 text-rose-700" 
+                            : "bg-emerald-50 border border-emerald-100 text-emerald-700"
+                        }`}>
+                          {h.status || "ACTIVE"}
+                        </span>
+                      </div>
                       <p className="text-[10px] font-mono opacity-60 truncate">{h.address}</p>
                       {h.email && <p className="text-[10px] font-mono opacity-50 truncate">Email: {h.email}</p>}
                       {h.phone && <p className="text-[10px] font-mono opacity-50 truncate">Phone: {h.phone}</p>}
@@ -1799,6 +1854,10 @@ export default function SystemAdmin() {
                         {u.status === "PENDING_APPROVAL" ? (
                           <span className="text-[8px] font-mono bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
                             PENDING VALIDATION
+                          </span>
+                        ) : u.status === "SUSPENDED" ? (
+                          <span className="text-[8px] font-mono bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+                            SUSPENDED
                           </span>
                         ) : (
                           <span className="text-[8px] font-mono bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
@@ -2426,6 +2485,18 @@ export default function SystemAdmin() {
                   className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
                   placeholder="+243..."
                 />
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest font-bold">Tenant_Status (Lock/Suspend)</label>
+                <select 
+                  value={editHospitalForm.status}
+                  onChange={(e) => setEditHospitalForm({...editHospitalForm, status: e.target.value})}
+                  className="w-full bg-white border border-app-line p-2.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-app-ink font-bold"
+                >
+                  <option value="ACTIVE">ACTIVE (ACTIVE)</option>
+                  <option value="SUSPENDED">SUSPENDED (SUSPENDU)</option>
+                </select>
               </div>
 
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 mt-8 pt-4 border-t border-app-line">

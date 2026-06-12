@@ -24,6 +24,83 @@ export default function Login() {
     const isAuthorizedAdmin = userRole === 'SYSTEM_ADMIN' || userRole === 'ADMIN' || userRole === 'SUP_ADMIN';
     const isSuperAdmin = userRole === 'SYSTEM_ADMIN' || userRole === 'SUP_ADMIN';
     
+    // Check if account or tenant is suspended
+    const isSuspended = !isSuperAdmin && (profile.status === "SUSPENDED" || profile.hospital?.status === "SUSPENDED");
+    
+    if (isSuspended) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative overflow-hidden font-sans">
+          {/* Background blobs for modern look */}
+          <div className="absolute top-0 right-0 w-96 h-96 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2 bg-red-500/10" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 blur-[100px] rounded-full translate-y-1/2 -translate-x-1/2 bg-rose-500/10" />
+
+          <div className="w-full max-w-md relative z-10">
+            {/* Language Switcher */}
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-full shadow-sm">
+                <button 
+                  onClick={() => setLanguage('en')}
+                  className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all ${language === 'en' ? 'bg-red-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                >EN</button>
+                <button 
+                  onClick={() => setLanguage('fr')}
+                  className={`px-3 py-1 text-[10px] font-bold rounded-full transition-all ${language === 'fr' ? 'bg-red-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                >FR</button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 p-10 shadow-2xl shadow-red-500/5 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-red-600" />
+              
+              <div className="mb-8 flex flex-col items-center text-center">
+                <div className="w-20 h-20 bg-red-50 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-red-500/5 ring-4 ring-red-100/50">
+                  <Activity className="w-10 h-10 text-red-600 animate-pulse" />
+                </div>
+                
+                <h1 className="text-2xl font-serif italic font-bold text-slate-800 tracking-tight">
+                  {language === 'fr' ? "Accès Suspendu" : "Access Suspended"}
+                </h1>
+                
+                <div className="mt-4 px-4 py-1.5 bg-red-50 border border-red-200 text-red-800 text-[9px] font-mono font-bold uppercase rounded-full tracking-wider">
+                  {language === 'fr' ? "Suspendu" : "Suspended"}
+                </div>
+              </div>
+
+              <div className="space-y-4 mb-8 bg-slate-50 border border-slate-100 p-5 rounded-2xl text-xs">
+                <div>
+                  <span className="block text-[9px] uppercase font-mono tracking-widest text-slate-400">
+                    {language === 'fr' ? "Utilisateur" : "User Account"}
+                  </span>
+                  <span className="text-sm font-bold text-slate-700">{profile.fullName || profile.name}</span>
+                </div>
+                
+                <div>
+                  <span className="block text-[9px] uppercase font-mono tracking-widest text-slate-400">
+                    {language === 'fr' ? "Réseau / Tenant" : "Network / Tenant"}
+                  </span>
+                  <span className="text-sm font-bold text-slate-700">{profile.hospitalName || "Hospital"}</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-red-600 leading-relaxed text-center mb-8 font-medium-sans">
+                {language === 'fr' 
+                  ? "Votre compte professionnel HealthOne ou votre réseau hospitalier a été suspendu. Veuillez contacter l'administration principale du réseau/ HealthOne pour résoudre ce problème."
+                  : "Your HealthOne professional account or hospital network tenant has been suspended by the Super-Administrator. Please contact your network head administrator for assistance."}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="w-full h-11 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 rounded-xl transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-[10px] active:scale-[0.98]"
+              >
+                {language === 'fr' ? "Retour" : "Back to Login"}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
     // Check if account is validated and active
     if (!isSuperAdmin && profile.status !== "ACTIVE") {
       return (
