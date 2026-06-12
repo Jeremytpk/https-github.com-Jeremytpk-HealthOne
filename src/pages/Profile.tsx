@@ -77,10 +77,11 @@ export default function Profile() {
       }
     } catch (err: any) {
       console.error("Camera access error:", err);
-      let msg = language === 'fr'
-        ? "Impossible d'accéder à la caméra. Veuillez vérifier les autorisations."
-        : "Failed to access camera. Please check your system/browser permissions.";
-      setCameraError(msg);
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError" || String(err.message || "").toLowerCase().includes("denied")) {
+        setCameraError("PERMISSION_DENIED");
+      } else {
+        setCameraError("OTHER_ERROR");
+      }
     }
   };
 
@@ -745,7 +746,17 @@ export default function Profile() {
                       <div className="p-4 border border-rose-200 bg-rose-50 rounded-lg text-rose-800 text-xs text-center space-y-3">
                         <AlertCircle className="w-8 h-8 text-rose-500 mx-auto" />
                         <p className="font-bold uppercase font-mono">{language === 'fr' ? "ERREUR MATÉRIEL" : "CAMERA ERROR"}</p>
-                        <p>{cameraError}</p>
+                        <p>
+                          {cameraError === "PERMISSION_DENIED"
+                            ? (language === 'fr'
+                                ? "L'accès à la caméra a été refusé. Veuillez modifier vos autorisations dans la barre d'adresse de votre navigateur ou dans vos préférences système."
+                                : "Camera access was denied. Please update your site permissions in your browser's address bar or system settings.")
+                            : cameraError === "OTHER_ERROR"
+                            ? (language === 'fr'
+                                ? "Impossible d'accéder à la caméra. Veuillez vérifier vos connexions matérielles ou si l'appareil est déjà utilisé par une autre application."
+                                : "Failed to access camera. Please check your hardware connections or if the device is already in use by another application.")
+                            : cameraError}
+                        </p>
                         <button
                           type="button"
                           onClick={startCamera}
@@ -765,9 +776,16 @@ export default function Profile() {
                             className="w-full h-full object-cover scale-x-[-1]"
                           />
                           {!cameraStream && (
-                            <div className="absolute inset-0 flex items-center justify-center text-slate-400 font-mono text-[10px] uppercase tracking-widest bg-slate-950">
-                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                              {language === 'fr' ? "Chargement..." : "Connecting..."}
+                            <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-slate-400 font-mono text-[9px] uppercase tracking-widest bg-slate-950 text-center gap-2">
+                              <RefreshCw className="w-5 h-5 animate-spin text-indigo-400" />
+                              <span className="font-bold">
+                                {language === 'fr' ? "Demande d'accès..." : "Access Request..."}
+                              </span>
+                              <span className="text-[8px] text-slate-500 max-w-[200px] leading-relaxed lowercase font-sans font-normal tracking-normal border-t border-slate-900 pt-1.5 inline-block">
+                                {language === 'fr' 
+                                  ? "autorisez l'utilisation de la caméra" 
+                                  : "please allow camera permissions"}
+                              </span>
                             </div>
                           )}
                         </div>
