@@ -31,7 +31,8 @@ import {
   X as CloseIcon,
   Printer,
   LayoutGrid,
-  List
+  List,
+  Edit
 } from "lucide-react";
 
 export default function Inventory() {
@@ -50,6 +51,15 @@ export default function Inventory() {
   const [newItem, setNewItem] = useState({ name: "", type: "EQUIPMENT", stock: 0, unit: "units", minStock: 5, imageUrl: "" });
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [editingForm, setEditingForm] = useState({ name: "", type: "EQUIPMENT", stock: 0, unit: "units", minStock: 5, imageUrl: "" });
+
+  const [adjustQtyItem, setAdjustQtyItem] = useState<any>(null);
+  const [adjustQtyDirection, setAdjustQtyDirection] = useState<"IN" | "OUT">("IN");
+  const [adjustQtyValue, setAdjustQtyValue] = useState<number>(1);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [isAdjustSubmitting, setIsAdjustSubmitting] = useState(false);
 
   const formatInventoryDate = (createdAt: any) => {
     if (!createdAt) return "—";
@@ -148,6 +158,43 @@ export default function Inventory() {
     }
   };
 
+  const handleOpenAdjustModal = (item: any, direction: "IN" | "OUT") => {
+    setAdjustQtyItem(item);
+    setAdjustQtyDirection(direction);
+    setAdjustQtyValue(1);
+    setAdjustError(null);
+  };
+
+  const handleConfirmAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustQtyItem) return;
+    
+    setAdjustError(null);
+    const qty = Number(adjustQtyValue);
+    if (isNaN(qty) || qty <= 0 || !Number.isInteger(qty)) {
+      setAdjustError(language === 'fr' ? "Veuillez entrer une quantité entière positive valide." : "Please enter a valid positive whole quantity.");
+      return;
+    }
+    
+    if (adjustQtyDirection === "OUT" && qty > adjustQtyItem.stock) {
+      setAdjustError(language === 'fr' 
+        ? `Impossible de retirer ${qty} ${adjustQtyItem.unit || 'unités'}. Seules ${adjustQtyItem.stock} sont disponibles.`
+        : `Cannot remove ${qty} ${adjustQtyItem.unit || 'units'}. Only ${adjustQtyItem.stock} available.`);
+      return;
+    }
+    
+    const amount = adjustQtyDirection === "IN" ? qty : -qty;
+    setIsAdjustSubmitting(true);
+    try {
+      await adjustStock(adjustQtyItem.id, amount);
+      setAdjustQtyItem(null);
+    } catch (err: any) {
+      setAdjustError(err.message || "Error");
+    } finally {
+      setIsAdjustSubmitting(false);
+    }
+  };
+
   const deleteItem = async (itemId: string) => {
     if (!window.confirm(t("areYouSure"))) return;
     try {
@@ -208,6 +255,68 @@ export default function Inventory() {
       fetchItems();
     } catch (error: any) {
       console.error("Error adding item:", error);
+      setFormError(error?.message || "An error occurred while saving the asset.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenEditModal = (item: any) => {
+    setEditingItem(item);
+    setEditingForm({
+      name: item.name || "",
+      type: item.type || "EQUIPMENT",
+      stock: Number(item.stock) || 0,
+      unit: item.unit || "units",
+      minStock: Number(item.minStock) || 5,
+      imageUrl: item.imageUrl || ""
+    });
+    setFormError(null);
+  };
+
+  const handleEditItemSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+    if (!editingItem) return;
+
+    if (!canAddArticle) {
+       setFormError("Unauthorized to edit item in inventory");
+       return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const itemRef = doc(db, "inventory", editingItem.id);
+      
+      const oldStock = Number(editingItem.stock) || 0;
+      const newStock = Number(editingForm.stock);
+
+      await updateDoc(itemRef, {
+        name: editingForm.name,
+        type: editingForm.type,
+        stock: newStock,
+        unit: editingForm.unit,
+        minStock: Number(editingForm.minStock),
+        imageUrl: editingForm.imageUrl
+      });
+
+      // Log transaction if stock level changed
+      if (oldStock !== newStock) {
+        const diff = newStock - oldStock;
+        await addDoc(collection(db, "inventory_transactions"), {
+          hospitalId,
+          itemId: editingItem.id,
+          type: diff > 0 ? "IN" : "OUT",
+          quantity: Math.abs(diff),
+          userId: profile?.id,
+          userName: profile?.name || "System",
+          createdAt: serverTimestamp()
+        });
+      }
+
+      setEditingItem(null);
+    } catch (error: any) {
+      console.error("Error editing item:", error);
       setFormError(error?.message || "An error occurred while saving the asset.");
     } finally {
       setIsSubmitting(false);
@@ -316,12 +425,22 @@ export default function Inventory() {
                    </div>
                  )}
 
-              <button 
-                onClick={() => deleteItem(item.id)}
-                className="absolute top-0 left-0 p-2 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-white/80 hover:text-red-600"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="absolute top-0 left-0 flex items-center bg-white border-r border-b border-app-line opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <button 
+                  onClick={() => handleOpenEditModal(item)}
+                  className="p-2 text-slate-500 hover:text-slate-800 transition-colors border-r border-slate-100 cursor-pointer"
+                  title={language === 'fr' ? "Modifier l'article" : "Edit item"}
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => deleteItem(item.id)}
+                  className="p-2 text-red-400 hover:text-red-600 transition-colors cursor-pointer"
+                  title={language === 'fr' ? "Supprimer l'article" : "Delete item"}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
 
               {item.imageUrl && (
                 <div className="h-32 w-full overflow-hidden border-b border-app-line">
@@ -361,16 +480,16 @@ export default function Inventory() {
 
                 <div className="flex items-center gap-1 border-t border-slate-200 pt-4 mt-auto">
                   <button 
-                    onClick={() => adjustStock(item.id, -1)}
+                    onClick={() => handleOpenAdjustModal(item, "OUT")}
                     disabled={item.stock <= 0}
-                    className="flex-1 h-9 border border-slate-200 flex items-center justify-center gap-2 text-[10px] font-mono uppercase hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-30"
+                    className="flex-1 h-9 border border-slate-200 flex items-center justify-center gap-2 text-[10px] font-mono uppercase hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-30 cursor-pointer"
                     title="Take from inventory"
                   >
                     <Minus className="w-3 h-3" /> {t("take")}
                   </button>
                   <button 
-                    onClick={() => adjustStock(item.id, 1)}
-                    className="flex-1 h-9 bg-slate-900 text-white flex items-center justify-center gap-2 text-[10px] font-mono uppercase hover:bg-slate-800 transition-colors"
+                    onClick={() => handleOpenAdjustModal(item, "IN")}
+                    className="flex-1 h-9 bg-slate-900 text-white flex items-center justify-center gap-2 text-[10px] font-mono uppercase hover:bg-slate-800 transition-colors cursor-pointer"
                     title="Restock inventory"
                   >
                     <Plus className="w-3 h-3" /> {t("restock")}
@@ -408,13 +527,22 @@ export default function Inventory() {
                         {/* ITEM name & optional image & delete */}
                         <td className="p-4 align-middle">
                           <div className="flex items-center gap-3">
-                            <button 
-                              onClick={() => deleteItem(item.id)}
-                              className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-650 cursor-pointer"
-                              title={language === 'fr' ? "Supprimer l'article" : "Delete item"}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button 
+                                onClick={() => handleOpenEditModal(item)}
+                                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1"
+                                title={language === 'fr' ? "Modifier l'article" : "Edit item"}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => deleteItem(item.id)}
+                                className="text-red-400 hover:text-red-650 cursor-pointer p-1"
+                                title={language === 'fr' ? "Supprimer l'article" : "Delete item"}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                             {item.imageUrl && (
                               <div className="w-10 h-10 overflow-hidden border border-app-line shrink-0 hidden sm:block">
                                 <img 
@@ -468,7 +596,7 @@ export default function Inventory() {
                         <td className="p-4 align-middle">
                           <div className="flex items-center gap-1">
                             <button 
-                              onClick={() => adjustStock(item.id, -1)}
+                              onClick={() => handleOpenAdjustModal(item, "OUT")}
                               disabled={item.stock <= 0}
                               className="h-8 border border-slate-205 flex items-center justify-center gap-1 text-[10px] font-mono uppercase bg-white hover:bg-rose-50 hover:text-rose-600 px-2.5 transition-colors disabled:opacity-30 cursor-pointer select-none"
                               title="Take from inventory"
@@ -477,7 +605,7 @@ export default function Inventory() {
                               <span className="hidden md:inline">{t("take")}</span>
                             </button>
                             <button 
-                              onClick={() => adjustStock(item.id, 1)}
+                              onClick={() => handleOpenAdjustModal(item, "IN")}
                               className="h-8 bg-slate-900 text-white flex items-center justify-center gap-1 text-[10px] font-mono uppercase hover:bg-slate-800 px-2.5 transition-colors cursor-pointer select-none"
                               title="Restock inventory"
                             >
@@ -519,6 +647,191 @@ export default function Inventory() {
                 <Plus className="w-4 h-4" /> {t("addStockItem")}
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Adjust Quantity Modal */}
+      {adjustQtyItem && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-app-bg border border-app-line w-full max-w-md my-auto p-6 sm:p-8 relative shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl sm:text-2xl font-serif italic font-bold mb-6 border-b border-app-line pb-2 font-mono uppercase tracking-widest">
+              {adjustQtyDirection === "IN" 
+                ? (language === "fr" ? "Réapprovisionner" : "Restock Asset") 
+                : (language === "fr" ? "Prendre de l'inventaire" : "Take from Inventory")
+              }
+            </h2>
+            <form onSubmit={handleConfirmAdjustment} className="space-y-4">
+              {adjustError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-xs font-mono rounded break-all">
+                  ERROR: {adjustError}
+                </div>
+              )}
+              
+              <div>
+                <p className="text-[11px] font-mono opacity-60 uppercase mb-4 leading-relaxed">
+                  {language === "fr" 
+                    ? `Article : ${adjustQtyItem.name}` 
+                    : `Item: ${adjustQtyItem.name}`}
+                  <br />
+                  {language === "fr" 
+                    ? `Stock actuel : ${adjustQtyItem.stock} ${adjustQtyItem.unit || "unités"}` 
+                    : `Current Stock: ${adjustQtyItem.stock} ${adjustQtyItem.unit || "units"}`}
+                </p>
+                
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest">
+                  {language === "fr" ? "Quantité" : "Quantity"} ({adjustQtyItem.unit || "units"})
+                </label>
+                <input 
+                  type="number" 
+                  required 
+                  min="1"
+                  step="1"
+                  value={adjustQtyValue}
+                  onChange={(e) => setAdjustQtyValue(Number(e.target.value))}
+                  className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
+                />
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 mt-8 pt-4 border-t border-app-line">
+                <button 
+                  type="button" 
+                  onClick={() => setAdjustQtyItem(null)} 
+                  className="px-6 py-2 border border-app-line font-mono text-[10px] uppercase tracking-widest cursor-pointer"
+                >
+                  {language === "fr" ? "Annuler" : "Cancel"}
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isAdjustSubmitting}
+                  className={`px-8 py-2 bg-app-ink text-app-bg font-mono text-[10px] uppercase tracking-widest transition-all cursor-pointer ${isAdjustSubmitting ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
+                >
+                  {isAdjustSubmitting 
+                    ? (language === 'fr' ? 'CHARGEMENT...' : 'SAVING...') 
+                    : (language === 'fr' ? 'Confirmer' : 'Confirm')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Item Modal */}
+      {editingItem && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-app-bg border border-app-line w-full max-w-md my-auto p-6 sm:p-8 relative shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl sm:text-2xl font-serif italic font-bold mb-6 border-b border-app-line pb-2 font-mono uppercase tracking-widest">
+              {language === 'fr' ? "Modifier l'article" : "Edit Asset"}
+            </h2>
+            <form onSubmit={handleEditItemSubmit} className="space-y-4">
+              {formError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-xs font-mono rounded break-all">
+                  ERROR: {formError}
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest">{t("itemName")}</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={editingForm.name}
+                  onChange={(e) => setEditingForm({...editingForm, name: e.target.value})}
+                  className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest">{t("category")}</label>
+                  {isPharmacie ? (
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={t("medicine")} 
+                      className="w-full bg-slate-100 border border-app-line p-2.5 font-mono text-sm focus:outline-none select-none"
+                    />
+                  ) : (
+                    <select 
+                      value={editingForm.type}
+                      onChange={(e) => setEditingForm({...editingForm, type: e.target.value})}
+                      className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none"
+                    >
+                      <option value="EQUIPMENT">{t("equipment")}</option>
+                      <option value="MEDICINE">{t("medicine")}</option>
+                    </select>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest">{t("unitType")}</label>
+                  <input 
+                    type="text" 
+                    value={editingForm.unit}
+                    onChange={(e) => setEditingForm({...editingForm, unit: e.target.value})}
+                    className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest">{t("inStock")}</label>
+                  <input 
+                    type="number" 
+                    required
+                    min="0"
+                    value={editingForm.stock}
+                    onChange={(e) => setEditingForm({...editingForm, stock: Number(e.target.value)})}
+                    className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest">
+                    {language === 'fr' ? "Seuil" : "Threshold"}
+                  </label>
+                  <input 
+                    type="number" 
+                    required
+                    min="1"
+                    value={editingForm.minStock}
+                    onChange={(e) => setEditingForm({...editingForm, minStock: Number(e.target.value)})}
+                    className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase font-mono opacity-50 mb-1 tracking-widest">
+                  {language === 'fr' ? "URL de l'image" : "Image URL"}
+                </label>
+                <input 
+                  type="text" 
+                  value={editingForm.imageUrl}
+                  onChange={(e) => setEditingForm({...editingForm, imageUrl: e.target.value})}
+                  placeholder="https://example.com/image.png"
+                  className="w-full bg-white border border-app-line p-2.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-app-ink"
+                />
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 mt-8 pt-4 border-t border-app-line">
+                <button 
+                  type="button" 
+                  onClick={() => setEditingItem(null)} 
+                  className="px-6 py-2 border border-app-line font-mono text-[10px] uppercase tracking-widest cursor-pointer"
+                >
+                  {language === 'fr' ? "Annuler" : "Cancel"}
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting}
+                  className={`px-8 py-2 bg-app-ink text-app-bg font-mono text-[10px] uppercase tracking-widest transition-all cursor-pointer ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
+                >
+                  {isSubmitting 
+                    ? (language === 'fr' ? 'ENREGISTREMENT...' : 'SAVING...') 
+                    : (language === 'fr' ? 'Mettre à jour' : 'Update Asset')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
